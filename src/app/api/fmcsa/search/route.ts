@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const name = searchParams.get('name') ?? '';
   const start = searchParams.get('start') ?? '1';
-  const size = searchParams.get('size') ?? '25';
+  const size = searchParams.get('size') ?? '100';
 
   if (!name.trim()) {
     return NextResponse.json({ error: 'name param required' }, { status: 400 });

@@ -1,6 +1,7 @@
 import type { SaferData, SaferBasics } from './types';
 
 // ─── Raw FMCSA API shapes ──────────────────────────────────────────────────────
+// Field names match the ACTUAL API responses (confirmed via live testing)
 export interface FMCSARawCarrier {
   dotNumber?: number | string;
   legalName?: string;
@@ -8,50 +9,69 @@ export interface FMCSARawCarrier {
   phyStreet?: string;
   phyCity?: string;
   phyState?: string;
-  phyZip?: string;
-  telephone?: string;
+  phyZipcode?: string;   // API returns phyZipcode, NOT phyZip
+  telephone?: string | number;
   fax?: string;
   emailAddress?: string;
   mileageYear?: number;
   mcs150Date?: string;
   mcs150Mileage?: number;
+  // Driver counts (API returns totalDrivers, not drivers)
   drivers?: number;
+  totalDrivers?: number;
   totalDriversAndOperators?: number;
   totalPowerUnits?: number;
+  // Status / authority
   operatingStatus?: string;
+  statusCode?: string;
+  commonAuthorityStatus?: string;
+  allowedToOperate?: string;
+  // Safety
   safetyRating?: string;
   safetyRatingDate?: string;
-  carrierOperation?: { code?: string; desc?: string };
+  issScore?: number | null;
+  // Operation type
+  carrierOperation?: { carrierOperationCode?: string; carrierOperationDesc?: string; code?: string; desc?: string };
+  // Flags
   hmFlag?: number;
   pcFlag?: number;
+  isPassengerCarrier?: string;
+  // MC / identifiers
   mcNumber?: string | number;
-  statusCode?: string;
-  allowedToOperate?: string;
+  // Inspections — embedded directly in carrier response
+  vehicleInsp?: number;
+  vehicleOosInsp?: number;
+  vehicleOosRate?: number;
+  driverInsp?: number;
+  driverOosInsp?: number;
+  driverOosRate?: number;
+  hazmatInsp?: number;
+  hazmatOosInsp?: number;
+  // Crashes — embedded directly in carrier response
+  crashTotal?: number;
+  fatalCrash?: number;
+  injCrash?: number;
+  towawayCrash?: number;
+  // Insurance on file
+  bipdInsuranceOnFile?: string | number;
+  bipdInsuranceRequired?: string;
+  bipdRequiredAmount?: string;
+  cargoInsuranceOnFile?: string | number;
+  cargoInsuranceRequired?: string;
+  bondInsuranceOnFile?: string | number;
 }
 
+// BASICs list item as returned by the /basics endpoint
 export interface FMCSARawBasicItem {
-  basicType?: string;
-  basic?: string;
-  basicsValue?: number;
-  basicsPercentile?: number;
-  percentile?: number;
-  measure?: number;
-  alertIndicator?: string;
-  onRoadPerformanceBasic?: { measure?: number; percentile?: number };
-  violationThrshld?: number;
-  totalVehicleInspections?: number;
-  totalDriverInspections?: number;
-}
-
-export interface FMCSARawBasics {
-  UNSAFE_DRIVING?: FMCSARawBasicItem;
-  HOS_COMPLIANCE?: FMCSARawBasicItem;
-  DRIVER_FITNESS?: FMCSARawBasicItem;
-  CONTROLLED_SUBS?: FMCSARawBasicItem;
-  VEHICLE_MAINT?: FMCSARawBasicItem;
-  CRASH_INDICATOR?: FMCSARawBasicItem;
-  HM_COMPLIANCE?: FMCSARawBasicItem;
-  basicsInfoList?: FMCSARawBasicItem[];
+  basic?: {
+    basicsType?: { basicsCode?: string; basicsShortDesc?: string };
+    basicsPercentile?: string | number;
+    measureValue?: string | number;
+    exceededFMCSAInterventionThreshold?: string | number;
+    basicsViolationThreshold?: string | number;
+    totalInspectionWithViolation?: number;
+    totalViolation?: number;
+  };
 }
 
 export interface FMCSACargoItem {
@@ -72,6 +92,7 @@ export interface FMCSACarrier {
   phone: string;
   email: string;
   operatingStatus: string;
+  authorityStatus: string;
   safetyRating: string;
   safetyRatingDate: string;
   powerUnits: number;
@@ -84,6 +105,22 @@ export interface FMCSACarrier {
   cargoTypes: string[];
   allowedToOperate: boolean;
   opType: string;
+  // Inspections (from carrier response)
+  vehicleInsp: number;
+  vehicleOosInsp: number;
+  vehicleOosRate: number;
+  driverInsp: number;
+  driverOosInsp: number;
+  driverOosRate: number;
+  // Crashes (from carrier response)
+  crashTotal: number;
+  fatalCrash: number;
+  injCrash: number;
+  towawayCrash: number;
+  // Insurance summary
+  bipdOnFile: boolean;
+  bipdRequired: boolean;
+  bipdAmount: string;
 }
 
 export interface FMCSABasicsResult {
@@ -104,6 +141,7 @@ export async function fmcsaLookupDOT(dot: string): Promise<FMCSACarrier | null> 
     if (!res.ok) return null;
     const json = await res.json();
 
+    // Full carrier lookup: content.carrier
     const raw: FMCSARawCarrier = json?.carrier?.content?.carrier ?? json?.carrier?.carrier ?? null;
     if (!raw) return null;
 
@@ -117,18 +155,52 @@ export async function fmcsaLookupDOT(dot: string): Promise<FMCSACarrier | null> 
 
 export async function fmcsaSearchName(name: string): Promise<FMCSACarrier[]> {
   try {
-    const res = await fetch(`/api/fmcsa/search?name=${encodeURIComponent(name)}&size=50`);
+    const res = await fetch(`/api/fmcsa/search?name=${encodeURIComponent(name)}&size=100`);
     if (!res.ok) return [];
     const json = await res.json();
 
-    // The API may return listCarrierItems or similar
-    const items: { carrier?: FMCSARawCarrier }[] =
-      json?.content?.listCarrierItems ??
-      json?.content?.carrierList ??
-      json?.listCarrierItems ??
-      [];
+    // Name search: content is directly an array of { carrier, _links }
+    const rawContent = json?.content;
+    const items: { carrier?: FMCSARawCarrier }[] = Array.isArray(rawContent)
+      ? rawContent
+      : (rawContent?.listCarrierItems ?? rawContent?.carrierList ?? json?.listCarrierItems ?? []);
 
-    return items.map(i => normalizeCarrier(i.carrier ?? {}, []));
+    return items
+      .map(i => normalizeCarrier(i.carrier ?? {}, []))
+      .filter(c => c.legalName && c.legalName !== 'Unknown');
+  } catch {
+    return [];
+  }
+}
+
+export async function fmcsaBrowseState(state: string): Promise<FMCSACarrier[]> {
+  // FMCSA doesn't support pure state browsing — search broad terms + filter
+  try {
+    const terms = ['TRANSPORT', 'TRUCKING', 'FREIGHT', 'LOGISTICS', 'CARRIER'];
+    const results = await Promise.all(
+      terms.map(t =>
+        fetch(`/api/fmcsa/search?name=${encodeURIComponent(t)}&size=100`)
+          .then(r => r.ok ? r.json() : { content: [] })
+          .catch(() => ({ content: [] }))
+      )
+    );
+
+    const seen = new Set<string>();
+    const carriers: FMCSACarrier[] = [];
+    for (const json of results) {
+      const rawContent = json?.content;
+      const items: { carrier?: FMCSARawCarrier }[] = Array.isArray(rawContent)
+        ? rawContent
+        : (rawContent?.listCarrierItems ?? rawContent?.carrierList ?? []);
+      for (const i of items) {
+        const c = normalizeCarrier(i.carrier ?? {}, []);
+        if (c.state.toUpperCase() === state.toUpperCase() && !seen.has(c.dotNumber)) {
+          seen.add(c.dotNumber);
+          carriers.push(c);
+        }
+      }
+    }
+    return carriers;
   } catch {
     return [];
   }
@@ -147,10 +219,10 @@ export async function fmcsaGetBasics(dot: string): Promise<FMCSABasicsResult | n
 
 // ─── Normalize raw API response → our types ───────────────────────────────────
 function normalizeCarrier(raw: FMCSARawCarrier, cargo: FMCSACargoItem[]): FMCSACarrier {
-  const phone = String(raw.telephone ?? '');
-  const formattedPhone = phone.length === 10
-    ? `(${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6)}`
-    : phone;
+  const phoneRaw = String(raw.telephone ?? '').replace(/\D/g, '');
+  const phone = phoneRaw.length === 10
+    ? `(${phoneRaw.slice(0, 3)}) ${phoneRaw.slice(3, 6)}-${phoneRaw.slice(6)}`
+    : phoneRaw || '';
 
   const mcs150 = raw.mcs150Date ?? '';
   const formattedMCS = mcs150.length === 8
@@ -161,81 +233,132 @@ function normalizeCarrier(raw: FMCSARawCarrier, cargo: FMCSACargoItem[]): FMCSAC
     .map(c => c.cargoClassDesc ?? '')
     .filter(Boolean);
 
+  // DBA: treat "--" and "0" as empty
+  const dbaRaw = raw.dbaName ?? '';
+  const dba = (dbaRaw === '--' || dbaRaw === '0') ? '' : dbaRaw;
+
+  // Operating status: map statusCode to human-readable
+  const statusMap: Record<string, string> = {
+    A: 'Active', I: 'Inactive', X: 'Out of Service', R: 'Revoked',
+  };
+  const opStatus = raw.operatingStatus
+    || (raw.statusCode ? (statusMap[raw.statusCode] ?? raw.statusCode) : 'Unknown');
+
+  // Authority: commonAuthorityStatus
+  const authMap: Record<string, string> = {
+    A: 'Authorized', I: 'Inactive', N: 'None',
+  };
+  const authStatus = raw.commonAuthorityStatus
+    ? (authMap[raw.commonAuthorityStatus] ?? raw.commonAuthorityStatus)
+    : '';
+
+  // Op type from carrierOperation (handles both response formats)
+  const opType = raw.carrierOperation?.carrierOperationDesc
+    || raw.carrierOperation?.desc
+    || '';
+
+  // Drivers
+  const drivers = raw.totalDrivers ?? raw.drivers ?? raw.totalDriversAndOperators ?? 0;
+
   return {
     dotNumber: String(raw.dotNumber ?? ''),
     mcNumber: String(raw.mcNumber ?? ''),
     legalName: raw.legalName ?? 'Unknown',
-    dbaName: raw.dbaName ?? '',
+    dbaName: dba,
     address: raw.phyStreet ?? '',
     city: raw.phyCity ?? '',
     state: raw.phyState ?? '',
-    zip: raw.phyZip ?? '',
-    phone: formattedPhone,
+    zip: raw.phyZipcode ?? '',   // ← correct field name from API
+    phone,
     email: raw.emailAddress ?? '',
-    operatingStatus: raw.operatingStatus ?? raw.statusCode ?? 'Unknown',
+    operatingStatus: opStatus,
+    authorityStatus: authStatus,
     safetyRating: raw.safetyRating ?? 'Not Rated',
     safetyRatingDate: raw.safetyRatingDate ?? '',
     powerUnits: raw.totalPowerUnits ?? 0,
-    drivers: raw.drivers ?? raw.totalDriversAndOperators ?? 0,
+    drivers,
     mcs150Date: formattedMCS,
     mcs150Mileage: raw.mcs150Mileage ?? 0,
     mileageYear: raw.mileageYear ?? 0,
-    hmFlag: (raw.hmFlag ?? 0) === 1,
+    hmFlag: (raw.hmFlag ?? 0) === 1 || raw.isPassengerCarrier === 'Y',
     pcFlag: (raw.pcFlag ?? 0) === 1,
     cargoTypes,
     allowedToOperate: (raw.allowedToOperate ?? 'Y') === 'Y',
-    opType: raw.carrierOperation?.desc ?? raw.operatingStatus ?? '',
+    opType,
+    // Inspections (embedded in carrier response)
+    vehicleInsp: raw.vehicleInsp ?? 0,
+    vehicleOosInsp: raw.vehicleOosInsp ?? 0,
+    vehicleOosRate: raw.vehicleOosRate ?? 0,
+    driverInsp: raw.driverInsp ?? 0,
+    driverOosInsp: raw.driverOosInsp ?? 0,
+    driverOosRate: raw.driverOosRate ?? 0,
+    // Crashes (embedded in carrier response)
+    crashTotal: raw.crashTotal ?? 0,
+    fatalCrash: raw.fatalCrash ?? 0,
+    injCrash: raw.injCrash ?? 0,
+    towawayCrash: raw.towawayCrash ?? 0,
+    // Insurance
+    bipdOnFile: Number(raw.bipdInsuranceOnFile ?? 0) > 0,
+    bipdRequired: raw.bipdInsuranceRequired === 'Y',
+    bipdAmount: raw.bipdRequiredAmount ?? '',
   };
 }
 
+// ─── Normalize BASICs response ────────────────────────────────────────────────
+// The /basics endpoint returns: content = array of { basic: { basicsType: { basicsCode }, measureValue, basicsPercentile, exceededFMCSAInterventionThreshold }, _links }
 export function normalizeBasics(json: Record<string, unknown>): FMCSABasicsResult {
-  // Handle both flat object and list formats
-  const content = (json?.content ?? json) as Record<string, unknown>;
-  const basicsList = (content?.basicsInfoList ?? []) as FMCSARawBasicItem[];
-  const flat = content as FMCSARawBasics;
-
-  const getPercentile = (item?: FMCSARawBasicItem): number | null => {
-    if (!item) return null;
-    const val = item.basicsPercentile ?? item.percentile
-      ?? item.onRoadPerformanceBasic?.percentile
-      ?? item.basicsValue ?? item.measure;
-    return val != null ? Math.round(Number(val)) : null;
+  const empty: FMCSABasicsResult = {
+    unsafeDriving: null, hoursOfService: null, driverFitness: null,
+    controlledSubstances: null, vehicleMaintenance: null, crashIndicator: null,
+    hmCompliance: null, alerts: [],
   };
 
-  const isAlert = (item?: FMCSARawBasicItem): boolean =>
-    item?.alertIndicator === 'Y' || item?.alertIndicator === '1';
+  const content = json?.content;
+  if (!Array.isArray(content) || content.length === 0) return empty;
 
-  // Try list format first
-  let ud: FMCSARawBasicItem | undefined;
-  let hos: FMCSARawBasicItem | undefined;
-  let df: FMCSARawBasicItem | undefined;
-  let cs: FMCSARawBasicItem | undefined;
-  let vm: FMCSARawBasicItem | undefined;
-  let ci: FMCSARawBasicItem | undefined;
-  let hm: FMCSARawBasicItem | undefined;
+  type BasicItem = {
+    basic?: {
+      basicsType?: { basicsCode?: string; basicsShortDesc?: string };
+      basicsPercentile?: string | number;
+      measureValue?: string | number;
+      exceededFMCSAInterventionThreshold?: string | number;
+    };
+  };
 
-  if (basicsList.length > 0) {
-    const find = (keys: string[]) => basicsList.find(b => {
-      const t = (b.basicType ?? b.basic ?? '').toUpperCase();
-      return keys.some(k => t.includes(k));
-    });
-    ud = find(['UNSAFE', 'UNSAFE_DRIVING']);
-    hos = find(['HOS', 'HOURS']);
-    df = find(['DRIVER_FIT', 'FITNESS']);
-    cs = find(['CONTROLLED', 'DRUG', 'ALCOHOL']);
-    vm = find(['VEHICLE_MAINT', 'MAINTENANCE', 'MAINT']);
-    ci = find(['CRASH']);
-    hm = find(['HM', 'HAZMAT']);
-  } else {
-    // Try flat object format
-    ud = flat.UNSAFE_DRIVING;
-    hos = flat.HOS_COMPLIANCE;
-    df = flat.DRIVER_FITNESS;
-    cs = flat.CONTROLLED_SUBS;
-    vm = flat.VEHICLE_MAINT;
-    ci = flat.CRASH_INDICATOR;
-    hm = flat.HM_COMPLIANCE;
-  }
+  const items = content as BasicItem[];
+
+  const getScore = (item?: BasicItem): number | null => {
+    if (!item?.basic) return null;
+    const b = item.basic;
+    // basicsPercentile can be "Not Public" — treat as null
+    if (b.basicsPercentile != null && b.basicsPercentile !== 'Not Public' && b.basicsPercentile !== '') {
+      const n = Number(b.basicsPercentile);
+      if (!isNaN(n)) return Math.round(n);
+    }
+    if (b.measureValue != null && b.measureValue !== '' && b.measureValue !== '0') {
+      const n = Number(b.measureValue);
+      if (!isNaN(n) && n > 0) return Math.round(n);
+    }
+    return null;
+  };
+
+  const isAlert = (item?: BasicItem): boolean => {
+    const v = item?.basic?.exceededFMCSAInterventionThreshold;
+    return v === '1' || v === 1;
+  };
+
+  const find = (keys: string[]) => items.find(item => {
+    const code = (item.basic?.basicsType?.basicsCode ?? '').toUpperCase();
+    return keys.some(k => code.includes(k.toUpperCase()));
+  });
+
+  const ud = find(['UNSAFE']);
+  const hos = find(['HOS', 'HOURS-OF-SERVICE', 'HOURS OF SERVICE']);
+  const df = find(['DRIVER FIT', 'FITNESS']);
+  const cs = find(['DRUG', 'ALCOHOL', 'CONTROLLED']);
+  const vm = find(['VEHICLE MAINT', 'VEHICLE M']);
+  const ci = find(['CRASH']);
+  const hm = find(['HAZMAT', 'HM COMPLI']);
 
   const alerts: string[] = [];
   if (isAlert(ud)) alerts.push('Unsafe Driving');
@@ -247,13 +370,13 @@ export function normalizeBasics(json: Record<string, unknown>): FMCSABasicsResul
   if (isAlert(hm)) alerts.push('HM Compliance');
 
   return {
-    unsafeDriving: getPercentile(ud),
-    hoursOfService: getPercentile(hos),
-    driverFitness: getPercentile(df),
-    controlledSubstances: getPercentile(cs),
-    vehicleMaintenance: getPercentile(vm),
-    crashIndicator: getPercentile(ci),
-    hmCompliance: getPercentile(hm),
+    unsafeDriving: getScore(ud),
+    hoursOfService: getScore(hos),
+    driverFitness: getScore(df),
+    controlledSubstances: getScore(cs),
+    vehicleMaintenance: getScore(vm),
+    crashIndicator: getScore(ci),
+    hmCompliance: getScore(hm),
     alerts,
   };
 }
@@ -274,6 +397,8 @@ export function toSaferData(
     hmCompliance: basics?.hmCompliance ?? null,
   };
 
+  const totalInsp = (carrier.vehicleInsp || 0) + (carrier.driverInsp || 0);
+
   return {
     legalName: carrier.legalName,
     dotNumber: carrier.dotNumber,
@@ -290,17 +415,28 @@ export function toSaferData(
       year: carrier.mileageYear,
     },
     insurance: {
-      current: '',
-      policy: '',
+      current: carrier.bipdRequired ? `BIPD Required: $${carrier.bipdAmount}k` : '',
+      policy: carrier.bipdOnFile ? 'On File' : 'Not On File',
       effective: '',
       expiration: '',
-      coverage: '',
+      coverage: carrier.bipdAmount ? `$${carrier.bipdAmount},000` : '',
     },
     insuranceHistory: [],
     basics: b,
-    inspections: { total: 0, vOOS: 0, dOOS: 0, vRate: 0, dRate: 0 },
+    inspections: {
+      total: totalInsp,
+      vOOS: carrier.vehicleOosInsp,
+      dOOS: carrier.driverOosInsp,
+      vRate: carrier.vehicleOosRate,
+      dRate: carrier.driverOosRate,
+    },
     inspectionDetail: [],
-    crashes: { total: 0, fatal: 0, injury: 0, tow: 0 },
+    crashes: {
+      total: carrier.crashTotal,
+      fatal: carrier.fatalCrash,
+      injury: carrier.injCrash,
+      tow: carrier.towawayCrash,
+    },
     ...(fetchedAt ? { fetchedAt } : {}),
   } as SaferData & { fetchedAt?: string };
 }
@@ -316,7 +452,7 @@ export function safetyRatingColor(rating: string): { bg: string; color: string }
 
 export function operatingStatusColor(status: string): { bg: string; color: string } {
   const s = (status ?? '').toLowerCase();
-  if (s.includes('authorized') || s.includes('active')) return { bg: '#f0fdfa', color: '#0f766e' };
-  if (s.includes('out-of-service') || s.includes('revoked')) return { bg: '#fff1f2', color: '#9f1239' };
+  if (s.includes('active') || s.includes('authorized')) return { bg: '#f0fdfa', color: '#0f766e' };
+  if (s.includes('inactive') || s.includes('out-of-service') || s.includes('revoked')) return { bg: '#fff1f2', color: '#9f1239' };
   return { bg: '#f1f5f9', color: '#64748b' };
 }

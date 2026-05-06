@@ -383,13 +383,16 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
     setSaferLoading(true);
     setSaferError(null);
     try {
+      // Carrier data includes inspection + crash counts; basics are separate
       const [carrier, basics] = await Promise.all([
         fmcsaLookupDOT(dot),
         fmcsaGetBasics(dot),
       ]);
-      if (!carrier) { setSaferError('No FMCSA data found for DOT# ' + dot); return; }
+      if (!carrier) { setSaferError(`No FMCSA record found for DOT# ${dot}. Verify the number is correct.`); return; }
+      // toSaferData now pulls inspections/crashes from carrier object
       const safer = toSaferData(carrier, basics, new Date().toISOString());
       updateLead(freshLead.id, { safer });
+      setSaferError(null);
     } catch {
       setSaferError('Failed to fetch FMCSA data. Please try again.');
     } finally {
