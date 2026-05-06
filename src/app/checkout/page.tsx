@@ -2,6 +2,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuthStore } from '@/lib/auth';
 import s from './checkout.module.css';
 
 // ── Plan data ─────────────────────────────────────────────────────────────────
@@ -112,6 +113,19 @@ function CheckoutInner() {
 
       users.push(newUser);
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
+
+      // Also register in main auth store so user can sign in
+      const authResult = useAuthStore.getState().signUp({
+        email: form.email,
+        password: form.password,
+        name: `${form.firstName} ${form.lastName}`,
+        plan,
+        role: 'admin',  // first signup of a paying account is admin of their org
+      });
+      if (!authResult.ok) {
+        // user already exists in auth store — sign them in
+        useAuthStore.getState().signIn(form.email, form.password);
+      }
 
       const EVENTS_KEY = 'carrierBase_events_v1';
       const events: Record<string, unknown>[] = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');

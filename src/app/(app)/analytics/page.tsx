@@ -4,7 +4,7 @@ import { useCRMStore } from '@/lib/store';
 import { fmt$, daysSince } from '@/lib/utils';
 import { STATUSES, STATUS_COLORS } from '@/lib/constants';
 import type { LeadStatus } from '@/lib/types';
-import USStateMap from '@/components/USStateMap';
+import USHeatMap from '@/components/USHeatMap';
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -265,17 +265,17 @@ export default function AnalyticsPage() {
             <div className="grid grid-2" style={{ gap: 14, marginBottom: 18 }}>
               <div className="panel">
                 <div className="lbl" style={{ marginBottom: 12 }}>Accounts by State</div>
-                <USStateMap data={stateData.counts} metricLabel="accounts" colorScale={['#dbeafe', '#1e3a8a']} />
+                <USHeatMap data={stateData.counts} metricLabel="accounts" colorScale={['#dbeafe', '#1e3a8a']} />
               </div>
               <div className="panel">
                 <div className="lbl" style={{ marginBottom: 12 }}>Bound Policies by State</div>
-                <USStateMap data={stateData.policies} metricLabel="policies" colorScale={['#ccfbf1', '#134e4a']} />
+                <USHeatMap data={stateData.policies} metricLabel="policies" colorScale={['#ccfbf1', '#134e4a']} />
               </div>
             </div>
 
             <div className="panel">
               <div className="lbl" style={{ marginBottom: 12 }}>Top Producer Lead Count by State</div>
-              <USStateMap data={topProducerStateMap} metricLabel="top-producer leads" colorScale={['#fef3c7', '#7c2d12']} />
+              <USHeatMap data={topProducerStateMap} metricLabel="top-producer leads" colorScale={['#fef3c7', '#7c2d12']} />
               <div style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
                 Each cell shows the lead count of the highest-performing producer in that state.
               </div>

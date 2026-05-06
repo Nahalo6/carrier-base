@@ -161,10 +161,10 @@ export default function HomePage() {
             <a href="#faq">FAQ</a>
           </div>
           <div className={s.navCta}>
-            <Link href="/dashboard" className={`${s.btn} ${s.btnGhost}`}>Sign In</Link>
-            <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => setModal('demo')}>
-              Book Demo <ArrowRight />
-            </button>
+            <Link href="/login" className={`${s.btn} ${s.btnGhost}`}>Sign In</Link>
+            <Link href="/signup" className={`${s.btn} ${s.btnPrimary}`}>
+              Sign Up <ArrowRight />
+            </Link>
           </div>
         </div>
       </nav>

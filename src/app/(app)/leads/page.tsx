@@ -399,6 +399,290 @@ function MarketResultCard({ result, alreadyAdded, onAdd }: {
   );
 }
 
+// ─── Policies Tab ─────────────────────────────────────────────────────────────
+function PoliciesTab({
+  lead, setPolicyModal, deletePolicy,
+}: {
+  lead: Lead;
+  setPolicyModal: (s: { open: boolean; policy?: Policy }) => void;
+  deletePolicy: (leadId: string, policyId: string) => void;
+}) {
+  const markets = useCRMStore(s => s.markets);
+  const producers = useCRMStore(s => s.producers);
+  const [renewalFilter, setRenewalFilter] = useState<30 | 60 | 90 | 0>(0);
+  const [reportModal, setReportModal] = useState<30 | 60 | 90 | null>(null);
+
+  const policies = lead.policies || [];
+  const totalPremium = policies.reduce((s, p) => s + p.premium, 0);
+  const activePolicies = policies.filter(p => p.status === 'Active');
+
+  // Group by line
+  const byLine = useMemo(() => {
+    const groups: Record<string, Policy[]> = {};
+    for (const p of policies) {
+      if (!groups[p.line]) groups[p.line] = [];
+      groups[p.line].push(p);
+    }
+    return groups;
+  }, [policies]);
+
+  const computeRenewals = (days: number) => {
+    const now = new Date();
+    return policies.filter(p => {
+      if (!p.effectiveDate) return false;
+      const eff = new Date(p.effectiveDate);
+      // Renewal date is one year after effective. Look for renewals coming up within `days`.
+      const next = new Date(eff);
+      next.setFullYear(next.getFullYear() + 1);
+      const diffDays = Math.ceil((next.getTime() - now.getTime()) / 86400000);
+      return diffDays >= 0 && diffDays <= days;
+    });
+  };
+
+  const filteredPolicies = renewalFilter > 0 ? computeRenewals(renewalFilter) : policies;
+
+  const statusColors: Record<Policy['status'], { bg: string; color: string }> = {
+    Active: { bg: '#f0fdfa', color: '#0f766e' },
+    Cancelled: { bg: '#fff1f2', color: '#9f1239' },
+    Expired: { bg: '#fafafa', color: '#525252' },
+    Pending: { bg: '#fefce8', color: '#854d0e' },
+  };
+
+  return (
+    <div>
+      {/* Header bar with summary + add button */}
+      <div className="panel" style={{ marginBottom: 14, background: '#f8fafc' }}>
+        <div className="flex flex-between" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Account Summary</div>
+            <div style={{ display: 'flex', gap: 18, marginTop: 6, flexWrap: 'wrap' }}>
+              <div><div style={{ fontSize: 10, color: '#64748b' }}>Total Policies</div><div style={{ fontSize: 18, fontWeight: 700 }}>{policies.length}</div></div>
+              <div><div style={{ fontSize: 10, color: '#64748b' }}>Active</div><div style={{ fontSize: 18, fontWeight: 700, color: '#0f766e' }}>{activePolicies.length}</div></div>
+              <div><div style={{ fontSize: 10, color: '#64748b' }}>Total Premium</div><div style={{ fontSize: 18, fontWeight: 700, color: '#0f766e' }}>{fmt$(totalPremium)}</div></div>
+              <div><div style={{ fontSize: 10, color: '#64748b' }}>Markets Used</div><div style={{ fontSize: 18, fontWeight: 700 }}>{new Set(policies.map(p => p.market)).size}</div></div>
+            </div>
+          </div>
+          <button className="btn-p" onClick={() => setPolicyModal({ open: true })}>+ Add Policy</button>
+        </div>
+      </div>
+
+      {/* Renewal Report buttons */}
+      <div className="panel" style={{ marginBottom: 14 }}>
+        <div className="flex flex-between" style={{ flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1b2a4a', marginBottom: 4 }}>Renewal Reports</div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>Filter to policies with renewals coming up. Click to shop a list.</div>
+          </div>
+          <div className="flex" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <button onClick={() => setRenewalFilter(renewalFilter === 30 ? 0 : 30)}
+              style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: `1.5px solid ${renewalFilter === 30 ? '#9f1239' : '#fda4af'}`, background: renewalFilter === 30 ? '#9f1239' : '#fff1f2', color: renewalFilter === 30 ? '#fff' : '#9f1239', cursor: 'pointer' }}>
+              30 Days Out ({computeRenewals(30).length})
+            </button>
+            <button onClick={() => setRenewalFilter(renewalFilter === 60 ? 0 : 60)}
+              style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: `1.5px solid ${renewalFilter === 60 ? '#b45309' : '#fcd34d'}`, background: renewalFilter === 60 ? '#b45309' : '#fef3c7', color: renewalFilter === 60 ? '#fff' : '#92400e', cursor: 'pointer' }}>
+              60 Days Out ({computeRenewals(60).length})
+            </button>
+            <button onClick={() => setRenewalFilter(renewalFilter === 90 ? 0 : 90)}
+              style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: `1.5px solid ${renewalFilter === 90 ? '#0f766e' : '#5eead4'}`, background: renewalFilter === 90 ? '#0f766e' : '#f0fdfa', color: renewalFilter === 90 ? '#fff' : '#0f766e', cursor: 'pointer' }}>
+              90 Days Out ({computeRenewals(90).length})
+            </button>
+            {renewalFilter > 0 && (
+              <button onClick={() => setRenewalFilter(0)} className="btn-s btn-sm">Clear</button>
+            )}
+            <button onClick={() => setReportModal(30)} className="btn-s btn-sm">Run Renewal Report</button>
+          </div>
+        </div>
+        {renewalFilter > 0 && (
+          <div style={{ marginTop: 10, fontSize: 12, color: '#475569', padding: 10, background: '#f8fafc', borderRadius: 8 }}>
+            Showing <b>{filteredPolicies.length}</b> polic{filteredPolicies.length === 1 ? 'y' : 'ies'} renewing within {renewalFilter} days.
+          </div>
+        )}
+      </div>
+
+      {/* Empty state */}
+      {policies.length === 0 && (
+        <div className="panel" style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 30 }}>
+          No policies bound yet. Click <b>+ Add Policy</b> to record a binding with policy number, market, line, producer, premium, and effective dates.
+          <br/><br/>
+          <span style={{ fontSize: 11, color: '#64748b' }}>You can add multiple policies with different markets per coverage line. For example, Auto Liability with Canal + Motor Truck Cargo with Lloyd&rsquo;s.</span>
+        </div>
+      )}
+
+      {/* Grouped by line */}
+      {renewalFilter === 0 ? (
+        Object.entries(byLine).map(([line, ps]) => (
+          <div key={line} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#1b2a4a', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {line}
+              <span style={{ fontSize: 11, fontWeight: 500, color: '#64748b', textTransform: 'none' }}>
+                · {ps.length} polic{ps.length === 1 ? 'y' : 'ies'} · {fmt$(ps.reduce((s, p) => s + p.premium, 0))}
+              </span>
+            </div>
+            {ps.map(p => (
+              <PolicyCard key={p.id} policy={p} markets={markets} producers={producers}
+                statusColors={statusColors} onEdit={() => setPolicyModal({ open: true, policy: p })}
+                onDelete={() => { if (confirm(`Delete policy ${p.policyNumber}?`)) deletePolicy(lead.id, p.id); }} />
+            ))}
+          </div>
+        ))
+      ) : (
+        // Filtered view
+        filteredPolicies.length > 0 ? filteredPolicies.map(p => (
+          <PolicyCard key={p.id} policy={p} markets={markets} producers={producers}
+            statusColors={statusColors} onEdit={() => setPolicyModal({ open: true, policy: p })}
+            onDelete={() => { if (confirm(`Delete policy ${p.policyNumber}?`)) deletePolicy(lead.id, p.id); }} />
+        )) : (
+          <div className="panel" style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 30 }}>
+            No policies renewing within {renewalFilter} days.
+          </div>
+        )
+      )}
+
+      {reportModal && <RenewalReportModal lead={lead} days={reportModal} onClose={() => setReportModal(null)} />}
+    </div>
+  );
+}
+
+function PolicyCard({ policy, markets, producers, statusColors, onEdit, onDelete }: {
+  policy: Policy;
+  markets: ReturnType<typeof useCRMStore.getState>['markets'];
+  producers: ReturnType<typeof useCRMStore.getState>['producers'];
+  statusColors: Record<Policy['status'], { bg: string; color: string }>;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const market = markets.find(m => m.id === policy.market);
+  const producer = producers.find(pr => pr.id === policy.producer);
+  const sc = statusColors[policy.status];
+
+  const renewalDate = useMemo(() => {
+    if (!policy.effectiveDate) return null;
+    const eff = new Date(policy.effectiveDate);
+    eff.setFullYear(eff.getFullYear() + 1);
+    return eff;
+  }, [policy.effectiveDate]);
+
+  const daysToRenewal = renewalDate ? Math.ceil((renewalDate.getTime() - Date.now()) / 86400000) : null;
+
+  return (
+    <div className="card" style={{ cursor: 'pointer', marginBottom: 10 }} onClick={onEdit}>
+      <div className="flex flex-between" style={{ marginBottom: 8 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#1b2a4a' }}>{policy.policyNumber}</div>
+          <div style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>{policy.line}</div>
+        </div>
+        <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+          {daysToRenewal != null && daysToRenewal <= 90 && daysToRenewal >= 0 && (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: daysToRenewal <= 30 ? '#fff1f2' : daysToRenewal <= 60 ? '#fef3c7' : '#f0fdfa', color: daysToRenewal <= 30 ? '#9f1239' : daysToRenewal <= 60 ? '#92400e' : '#0f766e' }}>
+              Renew in {daysToRenewal}d
+            </span>
+          )}
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.color }}>{policy.status}</span>
+          <button className="btn-s btn-sm" onClick={e => { e.stopPropagation(); onEdit(); }}>Edit</button>
+          <button className="btn-s btn-sm btn-danger" onClick={e => { e.stopPropagation(); onDelete(); }}>×</button>
+        </div>
+      </div>
+      <div className="grid grid-3" style={{ gap: 8, fontSize: 12 }}>
+        <div><span style={{ color: '#64748b' }}>Market: </span><span style={{ fontWeight: 600, color: '#2563eb' }}>{market?.name || policy.marketName || '—'}</span></div>
+        <div><span style={{ color: '#64748b' }}>Producer: </span><span style={{ fontWeight: 600 }}>{producer?.name || policy.producer}</span></div>
+        <div><span style={{ color: '#64748b' }}>Premium: </span><span style={{ fontWeight: 700, color: '#0f766e' }}>{policy.premium > 0 ? fmt$(policy.premium) : '—'}</span></div>
+        <div><span style={{ color: '#64748b' }}>Effective: </span><span style={{ fontWeight: 600 }}>{policy.effectiveDate || '—'}</span></div>
+        <div><span style={{ color: '#64748b' }}>Expiration: </span><span style={{ fontWeight: 600 }}>{policy.expirationDate || '—'}</span></div>
+        <div><span style={{ color: '#64748b' }}>Bound: </span><span style={{ fontWeight: 600 }}>{policy.bindDate || '—'}</span></div>
+      </div>
+      {policy.notes && <div style={{ marginTop: 8, fontSize: 11, color: '#475569', padding: 8, background: '#f8fafc', borderRadius: 6 }}>{policy.notes}</div>}
+    </div>
+  );
+}
+
+function RenewalReportModal({ lead, days, onClose }: { lead: Lead; days: 30 | 60 | 90; onClose: () => void }) {
+  const [windowDays, setWindowDays] = useState<30 | 60 | 90>(days);
+  const policies = lead.policies || [];
+  const renewalsList = policies.filter(p => {
+    if (!p.effectiveDate) return false;
+    const eff = new Date(p.effectiveDate);
+    const next = new Date(eff);
+    next.setFullYear(next.getFullYear() + 1);
+    const d = Math.ceil((next.getTime() - Date.now()) / 86400000);
+    return d >= 0 && d <= windowDays;
+  });
+
+  const csvDownload = () => {
+    const rows = [
+      ['Policy #', 'Line', 'Market', 'Effective', 'Expiration', 'Premium', 'Producer', 'Days to Renewal'],
+      ...renewalsList.map(p => {
+        const eff = new Date(p.effectiveDate);
+        const next = new Date(eff);
+        next.setFullYear(next.getFullYear() + 1);
+        const d = Math.ceil((next.getTime() - Date.now()) / 86400000);
+        return [p.policyNumber, p.line, p.marketName || p.market, p.effectiveDate, p.expirationDate, String(p.premium), p.producer, String(d)];
+      })
+    ];
+    const csv = rows.map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${lead.company.replace(/\s+/g, '-')}-renewals-${windowDays}d.csv`;
+    a.click();
+  };
+
+  return (
+    <Modal title={`Renewal Report — ${lead.company}`} onClose={onClose} width={780}>
+      <div className="flex" style={{ gap: 8, marginBottom: 14 }}>
+        {([30, 60, 90] as const).map(d => (
+          <button key={d} onClick={() => setWindowDays(d)}
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: `1.5px solid ${windowDays === d ? '#2563eb' : '#cbd5e1'}`, background: windowDays === d ? '#2563eb' : '#fff', color: windowDays === d ? '#fff' : '#475569', cursor: 'pointer' }}>
+            {d} days out
+          </button>
+        ))}
+      </div>
+
+      {renewalsList.length === 0 ? (
+        <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No policies renewing within {windowDays} days.</div>
+      ) : (
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead style={{ background: '#f8fafc' }}>
+              <tr>
+                <th style={{ padding: 10, textAlign: 'left' }}>Policy #</th>
+                <th style={{ padding: 10, textAlign: 'left' }}>Line</th>
+                <th style={{ padding: 10, textAlign: 'left' }}>Market</th>
+                <th style={{ padding: 10, textAlign: 'left' }}>Effective</th>
+                <th style={{ padding: 10, textAlign: 'right' }}>Premium</th>
+                <th style={{ padding: 10, textAlign: 'right' }}>Days</th>
+              </tr>
+            </thead>
+            <tbody>
+              {renewalsList.map(p => {
+                const eff = new Date(p.effectiveDate);
+                const next = new Date(eff);
+                next.setFullYear(next.getFullYear() + 1);
+                const d = Math.ceil((next.getTime() - Date.now()) / 86400000);
+                return (
+                  <tr key={p.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: 10, fontWeight: 600 }}>{p.policyNumber}</td>
+                    <td style={{ padding: 10 }}>{p.line}</td>
+                    <td style={{ padding: 10, color: '#2563eb' }}>{p.marketName || p.market}</td>
+                    <td style={{ padding: 10 }}>{p.effectiveDate}</td>
+                    <td style={{ padding: 10, textAlign: 'right', fontWeight: 700, color: '#0f766e' }}>{fmt$(p.premium)}</td>
+                    <td style={{ padding: 10, textAlign: 'right', fontWeight: 700, color: d <= 30 ? '#9f1239' : d <= 60 ? '#b45309' : '#0f766e' }}>{d}d</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="flex" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+        <button className="btn-s" onClick={onClose}>Close</button>
+        <button className="btn-p" onClick={csvDownload} disabled={renewalsList.length === 0}>Export CSV</button>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Lead Detail Panel ────────────────────────────────────────────────────────
 const DETAIL_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -865,56 +1149,7 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
 
         {/* POLICIES */}
         {tab === 'policies' && (
-          <div>
-            <div className="flex flex-between" style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 13, color: '#64748b' }}>
-                {(freshLead.policies || []).length} polic{(freshLead.policies || []).length === 1 ? 'y' : 'ies'} on file
-              </div>
-              <button className="btn-p btn-sm" onClick={() => setPolicyModal({ open: true })}>+ Add Policy</button>
-            </div>
-
-            {(!freshLead.policies || freshLead.policies.length === 0) && (
-              <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>
-                No policies bound yet. Click <b>+ Add Policy</b> to record a binding with policy number, market, line, producer, premium, and effective dates.
-              </div>
-            )}
-
-            {(freshLead.policies || []).map(p => {
-              const market = markets.find(m => m.id === p.market);
-              const producer = producers.find(pr => pr.id === p.producer);
-              const statusColors: Record<Policy['status'], { bg: string; color: string }> = {
-                Active: { bg: '#f0fdfa', color: '#0f766e' },
-                Cancelled: { bg: '#fff1f2', color: '#9f1239' },
-                Expired: { bg: '#fafafa', color: '#525252' },
-                Pending: { bg: '#fefce8', color: '#854d0e' },
-              };
-              const sc = statusColors[p.status];
-              return (
-                <div key={p.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setPolicyModal({ open: true, policy: p })}>
-                  <div className="flex flex-between" style={{ marginBottom: 6 }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1b2a4a' }}>{p.policyNumber}</div>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>{p.line}</div>
-                    </div>
-                    <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.color }}>{p.status}</span>
-                      <button className="btn-s btn-sm" onClick={e => { e.stopPropagation(); setPolicyModal({ open: true, policy: p }); }}>Edit</button>
-                      <button className="btn-s btn-sm btn-danger" onClick={e => { e.stopPropagation(); if (confirm(`Delete policy ${p.policyNumber}?`)) deletePolicy(freshLead.id, p.id); }}>×</button>
-                    </div>
-                  </div>
-                  <div className="grid grid-3" style={{ gap: 8, fontSize: 12 }}>
-                    <div><span style={{ color: '#64748b' }}>Market: </span><span style={{ fontWeight: 600 }}>{market?.name || p.marketName || '—'}</span></div>
-                    <div><span style={{ color: '#64748b' }}>Producer: </span><span style={{ fontWeight: 600 }}>{producer?.name || p.producer}</span></div>
-                    <div><span style={{ color: '#64748b' }}>Premium: </span><span style={{ fontWeight: 700, color: '#0f766e' }}>{p.premium > 0 ? fmt$(p.premium) : '—'}</span></div>
-                    <div><span style={{ color: '#64748b' }}>Effective: </span><span style={{ fontWeight: 600 }}>{p.effectiveDate || '—'}</span></div>
-                    <div><span style={{ color: '#64748b' }}>Expiration: </span><span style={{ fontWeight: 600 }}>{p.expirationDate || '—'}</span></div>
-                    <div><span style={{ color: '#64748b' }}>Bound: </span><span style={{ fontWeight: 600 }}>{p.bindDate || '—'}</span></div>
-                  </div>
-                  {p.notes && <div style={{ marginTop: 8, fontSize: 11, color: '#475569', padding: 8, background: '#f8fafc', borderRadius: 6 }}>{p.notes}</div>}
-                </div>
-              );
-            })}
-          </div>
+          <PoliciesTab lead={freshLead} setPolicyModal={setPolicyModal} deletePolicy={deletePolicy} />
         )}
 
         {/* SAFER */}
