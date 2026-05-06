@@ -80,7 +80,8 @@ export function runPreUW(lead: Lead, markets: Market[]): PreUWResult[] {
         warnings.push(`At BASIC alert limit (${alertInfo.count}/${a.maxAlerts})`);
       }
 
-      const checks: [keyof typeof b, keyof typeof a.bt, string][] = [
+      type BasicNumKey = 'unsafeDriving' | 'hoursOfService' | 'vehicleMaintenance' | 'crashIndicator';
+      const checks: [BasicNumKey, keyof typeof a.bt, string][] = [
         ['unsafeDriving', 'unsafeDriving', 'Unsafe Driving'],
         ['hoursOfService', 'hoursOfService', 'HOS Compliance'],
         ['vehicleMaintenance', 'vehicleMaintenance', 'Vehicle Maintenance'],
@@ -88,7 +89,7 @@ export function runPreUW(lead: Lead, markets: Market[]): PreUWResult[] {
       ];
 
       checks.forEach(([bKey, btKey, label]) => {
-        const val = b[bKey];
+        const val = b[bKey] as number | null;
         const threshold = a.bt[btKey];
         if (val != null && threshold) {
           if (val >= threshold) {
@@ -126,7 +127,8 @@ export function getAlerts(basics: SaferBasics | null | undefined) {
   if (!basics) return { count: 0, alerts: [] as typeof BASIC_CATS[number][] };
   const alerts: (typeof BASIC_CATS[number] & { value: number })[] = [];
   BASIC_CATS.forEach(c => {
-    const v = basics[c.key as keyof SaferBasics];
+    const raw = basics[c.key as keyof SaferBasics];
+    const v = typeof raw === 'number' ? raw : null;
     if (v != null && v >= c.thr) alerts.push({ ...c, value: v });
   });
   return { count: alerts.length, alerts };

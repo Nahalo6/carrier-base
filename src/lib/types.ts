@@ -7,6 +7,18 @@ export interface StatusHistoryEntry {
   changedBy: string | null;
 }
 
+export interface SaferBasicDetail {
+  percentile: number | null;
+  measure: number | null;
+  threshold: number | null;
+  totalViolations: number;
+  inspectionsWithViolations: number;
+  alert: boolean;
+  notPublic: boolean;
+  hasData: boolean;
+  runDate: string;
+}
+
 export interface SaferBasics {
   unsafeDriving: number | null;
   hoursOfService: number | null;
@@ -15,6 +27,10 @@ export interface SaferBasics {
   vehicleMaintenance: number | null;
   crashIndicator: number | null;
   hmCompliance: number | null;
+  // Rich data — optional so legacy data still works
+  details?: Record<string, SaferBasicDetail>;
+  hasAnyData?: boolean;
+  totalViolations?: number;
 }
 
 export interface SaferInsurance {

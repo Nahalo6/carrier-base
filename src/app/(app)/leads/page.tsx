@@ -11,37 +11,83 @@ import ProducerDot from '@/components/ui/ProducerDot';
 import Modal from '@/components/ui/Modal';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
-function AlertBadge({ basics }: { basics: Record<string, number | null> | null | undefined }) {
-  const { count } = getAlerts(basics as Parameters<typeof getAlerts>[0]);
+function AlertBadge({ basics }: { basics: import('@/lib/types').SaferBasics | null | undefined }) {
   if (!basics) return <span style={{ fontSize: 10, color: '#94a3b8' }}>No data</span>;
-  if (count === 0) return <span className="alert-badge alert-clean">✓ Clean</span>;
-  if (count <= 2) return <span className="alert-badge alert-warn">{count} Alert{count > 1 ? 's' : ''}</span>;
-  return <span className="alert-badge alert-danger">{count} Alert{count > 1 ? 's' : ''}</span>;
+  // Prefer alert count from rich detail (FMCSA percentile is always Not Public)
+  const richAlertCount = basics.details
+    ? Object.values(basics.details).filter(d => d.alert).length
+    : null;
+  const { count } = getAlerts(basics as Parameters<typeof getAlerts>[0]);
+  const finalCount = richAlertCount ?? count;
+  if (finalCount === 0) return <span className="alert-badge alert-clean">Clean</span>;
+  if (finalCount <= 2) return <span className="alert-badge alert-warn">{finalCount} Alert{finalCount > 1 ? 's' : ''}</span>;
+  return <span className="alert-badge alert-danger">{finalCount} Alert{finalCount > 1 ? 's' : ''}</span>;
 }
 
-function BasicBars({ basics }: { basics: Record<string, number | null> | null | undefined }) {
+function BasicBars({ basics }: { basics: import('@/lib/types').SaferBasics | null | undefined }) {
   if (!basics) return <div style={{ color: '#94a3b8', fontSize: 11 }}>No SAFER data</div>;
+
+  // Prefer rich detail map when available (always populated for new FMCSA pulls)
+  const details = basics.details;
+
   return (
     <div>
       {BASIC_CATS.map(c => {
-        const v = basics[c.key];
-        if (v == null) return (
+        const d = details?.[c.key];
+        const v = (basics as unknown as Record<string, number | null>)[c.key];
+
+        // No data at all
+        if (!d?.hasData && v == null) return (
           <div key={c.key} className="basic-bar">
             <span className="bar-icon">{c.icon}</span>
             <span className="bar-name">{c.short}</span>
-            <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>N/A</span>
+            <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>No data</span>
           </div>
         );
-        const col = basicBarColor(v);
-        return (
-          <div key={c.key} className="basic-bar">
-            <span className="bar-icon">{c.icon}</span>
-            <span className="bar-name">{c.short}</span>
-            <div className="track"><div className="fill" style={{ width: `${v}%`, background: col }} /></div>
-            <span className="val" style={{ color: col }}>{v}%</span>
-            {v >= c.thr && <span className="alert-tag">ALERT</span>}
-          </div>
-        );
+
+        // Rich detail available — render measure + violations + alert
+        if (d?.hasData) {
+          const measureText = d.measure != null ? d.measure.toFixed(2) : '—';
+          const measurePct = d.measure != null && d.threshold != null
+            ? Math.min(100, (d.measure / d.threshold) * 100) : 0;
+          const col = d.alert ? '#9f1239' : measurePct > 70 ? '#b45309' : measurePct > 40 ? '#0369a1' : '#0f766e';
+          return (
+            <div key={c.key} className="basic-bar">
+              <span className="bar-icon">{c.icon}</span>
+              <span className="bar-name">{c.short}</span>
+              <div className="track" title={`Measure ${measureText} of threshold ${d.threshold ?? '—'}`}>
+                <div className="fill" style={{ width: `${measurePct}%`, background: col }} />
+              </div>
+              <span className="val" style={{ color: col, fontSize: 10 }}>
+                {measureText}{d.threshold != null ? `/${d.threshold}` : ''}
+              </span>
+              <span style={{ fontSize: 10, color: d.totalViolations > 0 ? '#92400e' : '#94a3b8', marginLeft: 8 }}>
+                {d.totalViolations} viol
+              </span>
+              {d.alert
+                ? <span className="alert-tag">ALERT</span>
+                : d.notPublic
+                  ? <span style={{ fontSize: 9, color: '#94a3b8', fontStyle: 'italic', marginLeft: 6 }}>Restricted</span>
+                  : <span style={{ fontSize: 9, color: '#0f766e', fontWeight: 600, marginLeft: 6 }}>Pass</span>
+              }
+            </div>
+          );
+        }
+
+        // Fallback: legacy percentile-only rendering
+        if (v != null) {
+          const col = basicBarColor(v);
+          return (
+            <div key={c.key} className="basic-bar">
+              <span className="bar-icon">{c.icon}</span>
+              <span className="bar-name">{c.short}</span>
+              <div className="track"><div className="fill" style={{ width: `${v}%`, background: col }} /></div>
+              <span className="val" style={{ color: col }}>{v}%</span>
+              {v >= c.thr && <span className="alert-tag">ALERT</span>}
+            </div>
+          );
+        }
+        return null;
       })}
     </div>
   );
@@ -715,9 +761,9 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
                 <div className="panel">
                   <div className="flex flex-between" style={{ marginBottom: 12 }}>
                     <div className="lbl" style={{ marginBottom: 0 }}>FMCSA BASICs Scores</div>
-                    <AlertBadge basics={freshLead.safer.basics as any} />
+                    <AlertBadge basics={freshLead.safer.basics} />
                   </div>
-                  <BasicBars basics={freshLead.safer.basics as any} />
+                  <BasicBars basics={freshLead.safer.basics} />
                 </div>
                 <div className="panel">
                   <div className="lbl" style={{ marginBottom: 12 }}>MCS-150 Filing</div>

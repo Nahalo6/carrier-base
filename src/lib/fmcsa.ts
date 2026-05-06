@@ -405,8 +405,24 @@ export function toSaferData(carrier: FMCSACarrier, basics: FMCSABasicsResult | n
     vehicleMaintenance: basics?.vehicleMaintenance ?? null,
     crashIndicator: basics?.crashIndicator ?? null,
     hmCompliance: basics?.hmCompliance ?? null,
+    // Rich detail — exposes measure/violations/alerts so the leads SAFER tab
+    // can render meaningful info even when FMCSA hides the percentile.
+    details: basics?.details,
+    hasAnyData: basics?.hasAnyData,
+    totalViolations: basics?.totalViolations,
   };
   const totalInsp = (carrier.vehicleInsp || 0) + (carrier.driverInsp || 0);
+
+  // Synthesize a single insurance history entry from BIPD on-file data
+  const insuranceHistory = carrier.bipdRequired ? [{
+    carrier: carrier.bipdOnFile ? 'BIPD Filing On File' : 'BIPD Required — Not On File',
+    policy: '—',
+    effective: carrier.mcs150Date || '—',
+    expiration: '—',
+    coverage: carrier.bipdAmount ? `$${carrier.bipdAmount},000` : '—',
+    type: 'BIPD (Public Liability)',
+  }] : [];
+
   return {
     legalName: carrier.legalName,
     dotNumber: carrier.dotNumber,
@@ -420,12 +436,12 @@ export function toSaferData(carrier: FMCSACarrier, basics: FMCSABasicsResult | n
       drivers: carrier.drivers, powerUnits: carrier.powerUnits, year: carrier.mileageYear,
     },
     insurance: {
-      current: carrier.bipdRequired ? `BIPD Required: $${carrier.bipdAmount}k` : '',
+      current: carrier.bipdRequired ? `BIPD Required: $${carrier.bipdAmount}k` : 'Not Required',
       policy: carrier.bipdOnFile ? 'On File' : 'Not On File',
       effective: '', expiration: '',
-      coverage: carrier.bipdAmount ? `$${carrier.bipdAmount},000` : '',
+      coverage: carrier.bipdAmount ? `$${carrier.bipdAmount},000` : '—',
     },
-    insuranceHistory: [],
+    insuranceHistory,
     basics: b,
     inspections: {
       total: totalInsp, vOOS: carrier.vehicleOosInsp, dOOS: carrier.driverOosInsp,

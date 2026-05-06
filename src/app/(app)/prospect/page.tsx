@@ -9,17 +9,44 @@ import {
   type FMCSACarrier, type FMCSABasicsResult, type BasicDetail,
 } from '@/lib/fmcsa';
 
-const BASIC_LABELS: { key: string; label: string; short: string }[] = [
-  { key: 'unsafeDriving',        label: 'Unsafe Driving',        short: 'Unsafe Driving' },
-  { key: 'hoursOfService',       label: 'HOS Compliance',        short: 'HOS Compliance' },
-  { key: 'vehicleMaintenance',   label: 'Vehicle Maintenance',   short: 'Vehicle Maint' },
-  { key: 'crashIndicator',       label: 'Crash Indicator',       short: 'Crash Indicator' },
-  { key: 'driverFitness',        label: 'Driver Fitness',        short: 'Driver Fitness' },
-  { key: 'controlledSubstances', label: 'Controlled Substances', short: 'Drugs/Alcohol' },
-  { key: 'hmCompliance',         label: 'HM Compliance',         short: 'HM Compliance' },
+// ─── Clean inline icons (no emojis) ───────────────────────────────────────────
+const IconSearch = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+const IconSpark = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2 2M16.5 16.5l2 2M5.5 18.5l2-2M16.5 7.5l2-2" />
+  </svg>
+);
+const IconReset = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" />
+  </svg>
+);
+const IconChev = ({ open, size = 12 }: { open: boolean; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} aria-hidden>
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+const IconPlus = ({ size = 13 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const BASIC_LABELS: { key: string; label: string }[] = [
+  { key: 'unsafeDriving',        label: 'Unsafe Driving' },
+  { key: 'hoursOfService',       label: 'HOS Compliance' },
+  { key: 'vehicleMaintenance',   label: 'Vehicle Maintenance' },
+  { key: 'crashIndicator',       label: 'Crash Indicator' },
+  { key: 'driverFitness',        label: 'Driver Fitness' },
+  { key: 'controlledSubstances', label: 'Drugs & Alcohol' },
+  { key: 'hmCompliance',         label: 'HM Compliance' },
 ];
 
-// ─── BASICs detail row — shows percentile if public, else measure + violations
+// ─── BASICs row — measure + violations + alert
 function BasicRow({ label, d }: { label: string; d: BasicDetail | undefined }) {
   if (!d || !d.hasData) {
     return (
@@ -37,31 +64,30 @@ function BasicRow({ label, d }: { label: string; d: BasicDetail | undefined }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 11, borderBottom: '1px solid #f8fafc' }}>
       <div style={{ width: 130, color: '#475569', fontWeight: 600 }}>{label}</div>
-      <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+      <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
         <div style={{ width: `${measurePct}%`, height: '100%', background: fillColor, borderRadius: 3 }} />
       </div>
-      <div style={{ width: 56, fontSize: 10, color: '#475569', textAlign: 'right' }} title="Measure / Threshold">
-        {measureText}{d.threshold ? ` / ${d.threshold}` : ''}
+      <div style={{ width: 70, fontSize: 10, color: '#475569', textAlign: 'right' }} title="Measure / Threshold">
+        {measureText}{d.threshold != null ? ` / ${d.threshold}` : ''}
       </div>
-      <div style={{ width: 64, fontSize: 10, color: d.totalViolations > 0 ? '#92400e' : '#64748b', textAlign: 'right' }} title="Total violations / inspections with violations">
+      <div style={{ width: 70, fontSize: 10, color: d.totalViolations > 0 ? '#92400e' : '#64748b', textAlign: 'right' }}>
         {d.totalViolations} viol
       </div>
-      <div style={{ width: 80, textAlign: 'right' }}>
+      <div style={{ width: 84, textAlign: 'right' }}>
         {d.alert ? (
-          <span style={{ fontSize: 9, fontWeight: 800, color: '#fff', background: '#9f1239', padding: '2px 6px', borderRadius: 4 }}>ALERT</span>
+          <span style={{ fontSize: 9, fontWeight: 800, color: '#fff', background: '#9f1239', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.04em' }}>ALERT</span>
         ) : d.percentile != null ? (
           <span style={{ fontSize: 11, fontWeight: 700, color: fillColor }}>{d.percentile}%</span>
         ) : d.notPublic ? (
-          <span style={{ fontSize: 9, color: '#94a3b8', fontStyle: 'italic' }}>Not Public</span>
+          <span style={{ fontSize: 9, color: '#94a3b8', fontStyle: 'italic' }}>Restricted</span>
         ) : (
-          <span style={{ fontSize: 9, color: '#0f766e', fontWeight: 600 }}>OK</span>
+          <span style={{ fontSize: 9, color: '#0f766e', fontWeight: 600 }}>Pass</span>
         )}
       </div>
     </div>
   );
 }
 
-// Mini summary used in collapsed card view
 function BasicScoreMini({ basics }: { basics: FMCSABasicsResult }) {
   if (!basics.hasAnyData) return (
     <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, display: 'inline-block' }}>BASICs: no public data</span>
@@ -69,10 +95,10 @@ function BasicScoreMini({ basics }: { basics: FMCSABasicsResult }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
       {basics.alerts.length > 0
-        ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100, background: '#fff1f2', color: '#9f1239', border: '1px solid #fda4af' }}>⚠ {basics.alerts.length} BASICs Alert{basics.alerts.length > 1 ? 's' : ''}</span>
-        : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100, background: '#f0fdfa', color: '#0f766e', border: '1px solid #5eead4' }}>✓ No BASICs Alerts</span>
+        ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100, background: '#fff1f2', color: '#9f1239', border: '1px solid #fda4af' }}>{basics.alerts.length} BASICs Alert{basics.alerts.length > 1 ? 's' : ''}</span>
+        : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100, background: '#f0fdfa', color: '#0f766e', border: '1px solid #5eead4' }}>No BASICs Alerts</span>
       }
-      <span style={{ fontSize: 10, color: '#475569' }}>📋 {basics.totalViolations} total viol{basics.totalViolations !== 1 ? 's' : ''}</span>
+      <span style={{ fontSize: 10, color: '#475569' }}>{basics.totalViolations} total violations</span>
     </div>
   );
 }
@@ -84,14 +110,14 @@ function InspectionCrashRow({ carrier }: { carrier: FMCSACarrier }) {
     <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
       {totalInsp > 0 && (
         <span style={{ fontSize: 10, color: '#475569' }}>
-          🔍 {totalInsp} insp
+          Inspections: {totalInsp}
           {carrier.vehicleOosInsp > 0 && <span style={{ color: '#9f1239', marginLeft: 4 }}>· {carrier.vehicleOosInsp} veh OOS</span>}
           {carrier.driverOosInsp > 0 && <span style={{ color: '#9f1239', marginLeft: 4 }}>· {carrier.driverOosInsp} drv OOS</span>}
         </span>
       )}
       {carrier.crashTotal > 0 && (
         <span style={{ fontSize: 10, color: '#92400e' }}>
-          💥 {carrier.crashTotal} crash{carrier.crashTotal > 1 ? 'es' : ''}
+          Crashes: {carrier.crashTotal}
           {carrier.fatalCrash > 0 && <span style={{ color: '#9f1239', marginLeft: 4 }}>· {carrier.fatalCrash} fatal</span>}
         </span>
       )}
@@ -124,8 +150,8 @@ function CarrierCard({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: 14, color: '#1b2a4a' }}>{carrier.legalName}</span>
               {carrier.dbaName && <span style={{ fontSize: 11, color: '#64748b' }}>dba {carrier.dbaName}</span>}
-              {carrier.hmFlag && <span style={{ fontSize: 9, fontWeight: 700, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 5, padding: '1px 5px' }}>HM</span>}
-              {carrier.pcFlag && <span style={{ fontSize: 9, fontWeight: 700, background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', borderRadius: 5, padding: '1px 5px' }}>PC</span>}
+              {carrier.hmFlag && <span style={{ fontSize: 9, fontWeight: 700, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 5, padding: '1px 6px' }}>HAZMAT</span>}
+              {carrier.pcFlag && <span style={{ fontSize: 9, fontWeight: 700, background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', borderRadius: 5, padding: '1px 6px' }}>PASSENGER</span>}
             </div>
             <div style={{ fontSize: 11, color: '#64748b', marginBottom: 5 }}>
               DOT# {carrier.dotNumber}{carrier.mcNumber ? ` · MC-${carrier.mcNumber}` : ''} · {carrier.city}, {carrier.state} {carrier.zip}
@@ -134,19 +160,23 @@ function CarrierCard({
               <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 100, ...ratingStyle }}>{carrier.safetyRating || 'Not Rated'}</span>
               <span style={{ fontSize: 10, fontWeight: 500, padding: '2px 7px', borderRadius: 100, ...statusStyle }}>{carrier.operatingStatus}</span>
               {carrier.authorityStatus && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 100, background: '#f0fdfa', color: '#0f766e' }}>Auth: {carrier.authorityStatus}</span>}
-              <span style={{ fontSize: 11, color: '#475569' }}>🚛 {carrier.powerUnits} unit{carrier.powerUnits !== 1 ? 's' : ''}</span>
-              {carrier.drivers > 0 && <span style={{ fontSize: 11, color: '#475569' }}>👤 {carrier.drivers} driver{carrier.drivers !== 1 ? 's' : ''}</span>}
-              {carrier.opType && <span style={{ fontSize: 10, color: '#64748b' }}>{carrier.opType}</span>}
+              <span style={{ fontSize: 11, color: '#475569' }}>{carrier.powerUnits} unit{carrier.powerUnits !== 1 ? 's' : ''}</span>
+              {carrier.drivers > 0 && <span style={{ fontSize: 11, color: '#475569' }}>· {carrier.drivers} driver{carrier.drivers !== 1 ? 's' : ''}</span>}
+              {carrier.opType && <span style={{ fontSize: 10, color: '#64748b' }}>· {carrier.opType}</span>}
             </div>
             <InspectionCrashRow carrier={carrier} />
             {basics && !expanded && <BasicScoreMini basics={basics} />}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
             {alreadyAdded
-              ? <span style={{ fontSize: 11, color: '#0f766e', fontWeight: 600, padding: '4px 10px', background: '#f0fdfa', border: '1px solid #5eead4', borderRadius: 8 }}>✓ In Leads</span>
-              : <button className="btn-p btn-sm" onClick={e => { e.stopPropagation(); onImport(carrier, basics); }} style={{ fontSize: 11, padding: '4px 12px' }}>+ Import</button>
+              ? <span style={{ fontSize: 11, color: '#0f766e', fontWeight: 600, padding: '4px 10px', background: '#f0fdfa', border: '1px solid #5eead4', borderRadius: 8 }}>In Leads</span>
+              : <button className="btn-p btn-sm" onClick={e => { e.stopPropagation(); onImport(carrier, basics); }} style={{ fontSize: 11, padding: '4px 12px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <IconPlus /> Import
+                </button>
             }
-            <span style={{ fontSize: 10, color: '#94a3b8' }}>{expanded ? '▲' : '▼'} {expanded ? 'Collapse' : 'Details'}</span>
+            <span style={{ fontSize: 10, color: '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <IconChev open={expanded} /> {expanded ? 'Collapse' : 'Details'}
+            </span>
           </div>
         </div>
       </div>
@@ -195,7 +225,7 @@ function CarrierCard({
               <div><div style={{ fontSize: 11, color: '#64748b' }}>Drv OOS</div><div style={{ fontWeight: 700, fontSize: 16, color: carrier.driverOosInsp > 0 ? '#9f1239' : '#0f766e' }}>{carrier.driverOosInsp} <span style={{ fontSize: 10, fontWeight: 400 }}>({Math.round(carrier.driverOosRate)}%)</span></div></div>
               {carrier.crashTotal > 0 && (
                 <div style={{ gridColumn: '1/-1', fontSize: 12, color: '#92400e', marginTop: 4 }}>
-                  💥 {carrier.crashTotal} crashes · {carrier.fatalCrash} fatal · {carrier.injCrash} injury · {carrier.towawayCrash} tow
+                  <b>Crashes:</b> {carrier.crashTotal} total · {carrier.fatalCrash} fatal · {carrier.injCrash} injury · {carrier.towawayCrash} tow
                 </div>
               )}
             </div>
@@ -210,31 +240,29 @@ function CarrierCard({
             </div>
           )}
 
-          {/* BASICs section - rich data */}
           <div style={{ background: basics?.alerts.length ? '#fff8f8' : basics?.hasAnyData ? '#f0fdfa' : '#f8fafc', borderRadius: 10, padding: 14, border: `1px solid ${basics?.alerts.length ? '#fda4af' : basics?.hasAnyData ? '#5eead4' : '#e2e8f0'}`, marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#1b2a4a' }}>FMCSA SMS BASICs</div>
               {!basics && !basicsLoading && <button className="btn-s btn-sm" onClick={onLoadBasics} style={{ fontSize: 10 }}>Load BASICs</button>}
-              {basicsLoading && <span style={{ fontSize: 11, color: '#64748b' }}>⏳ Loading…</span>}
-              {basics && basics.alerts.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: '#9f1239' }}>⚠ {basics.alerts.length} Alert{basics.alerts.length > 1 ? 's' : ''}: {basics.alerts.join(', ')}</span>}
-              {basics && basics.alerts.length === 0 && basics.hasAnyData && <span style={{ fontSize: 10, fontWeight: 700, color: '#0f766e' }}>✓ No Active Alerts · {basics.totalViolations} total violations</span>}
+              {basicsLoading && <span style={{ fontSize: 11, color: '#64748b' }}>Loading…</span>}
+              {basics && basics.alerts.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: '#9f1239' }}>{basics.alerts.length} Alert{basics.alerts.length > 1 ? 's' : ''}: {basics.alerts.join(', ')}</span>}
+              {basics && basics.alerts.length === 0 && basics.hasAnyData && <span style={{ fontSize: 10, fontWeight: 700, color: '#0f766e' }}>No Active Alerts · {basics.totalViolations} total violations</span>}
               {basics && !basics.hasAnyData && <span style={{ fontSize: 10, color: '#94a3b8' }}>No public BASICs data</span>}
             </div>
             {basics?.hasAnyData ? (
               <>
-                {/* Header row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0', fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #e2e8f0' }}>
                   <div style={{ width: 130 }}>Category</div>
-                  <div style={{ flex: 1 }}>Severity (measure / threshold)</div>
-                  <div style={{ width: 56, textAlign: 'right' }}>Measure</div>
-                  <div style={{ width: 64, textAlign: 'right' }}>Violations</div>
-                  <div style={{ width: 80, textAlign: 'right' }}>Status</div>
+                  <div style={{ flex: 1 }}>Severity</div>
+                  <div style={{ width: 70, textAlign: 'right' }}>Measure</div>
+                  <div style={{ width: 70, textAlign: 'right' }}>Violations</div>
+                  <div style={{ width: 84, textAlign: 'right' }}>Status</div>
                 </div>
                 {BASIC_LABELS.map(b => (
                   <BasicRow key={b.key} label={b.label} d={basics.details[b.key]} />
                 ))}
                 <div style={{ marginTop: 8, fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>
-                  Note: SMS percentile scores are restricted to authenticated portal users — &ldquo;Not Public&rdquo; is normal. Measure values, violation counts, and alert flags are public.
+                  Note: SMS percentile rankings are restricted to authenticated portal users. The measure values, violation counts, and alert flags above are public.
                 </div>
               </>
             ) : !basicsLoading && basics ? (
@@ -243,14 +271,16 @@ function CarrierCard({
                 <br /><span style={{ fontSize: 10 }}>Common for very small carriers without enough inspections to be evaluated.</span>
               </div>
             ) : !basics ? (
-              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Click &quot;Load BASICs&quot; to pull live SMS data</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Click &ldquo;Load BASICs&rdquo; to pull live SMS data</div>
             ) : null}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             {alreadyAdded
-              ? <span style={{ fontSize: 12, color: '#0f766e', fontWeight: 600, padding: '8px 14px', background: '#f0fdfa', border: '1px solid #5eead4', borderRadius: 8 }}>✓ Already in your leads</span>
-              : <button className="btn-p" onClick={() => onImport(carrier, basics)}>+ Import to Leads</button>
+              ? <span style={{ fontSize: 12, color: '#0f766e', fontWeight: 600, padding: '8px 14px', background: '#f0fdfa', border: '1px solid #5eead4', borderRadius: 8 }}>Already in your leads</span>
+              : <button className="btn-p" onClick={() => onImport(carrier, basics)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <IconPlus /> Import to Leads
+                </button>
             }
           </div>
         </div>
@@ -263,11 +293,15 @@ function CarrierCard({
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 type SortMode = 'newest' | 'fleet' | 'state' | 'name';
 
+const FILTER_DEFAULTS = {
+  query: '', stateFilter: '', minUnits: '', maxUnits: '',
+  renewalMonth: '', authorizedOnly: false, sortMode: 'newest' as SortMode,
+};
+
 export default function ProspectPage() {
   const addLead = useCRMStore(s => s.addLead);
   const leads = useCRMStore(s => s.leads);
 
-  // Filters
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [minUnits, setMinUnits] = useState('');
@@ -276,7 +310,6 @@ export default function ProspectPage() {
   const [authorizedOnly, setAuthorizedOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('newest');
 
-  // Search state
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('Searching FMCSA…');
   const [error, setError] = useState<string | null>(null);
@@ -284,7 +317,6 @@ export default function ProspectPage() {
   const [searched, setSearched] = useState(false);
   const [searchMode, setSearchMode] = useState<'name'|'dot'|'state'|'all'|'new'|''>('');
 
-  // Expanded & basics
   const [expandedDot, setExpandedDot] = useState<string | null>(null);
   const [basicsByDot, setBasicsByDot] = useState<Record<string, FMCSABasicsResult>>({});
   const [basicsLoadingDot, setBasicsLoadingDot] = useState<string | null>(null);
@@ -303,7 +335,6 @@ export default function ProspectPage() {
         return m === monthIdx;
       });
     }
-    // Sort
     const sorted = [...list];
     if (sortMode === 'newest') sorted.sort((a, b) => Number(b.dotNumber) - Number(a.dotNumber));
     else if (sortMode === 'fleet') sorted.sort((a, b) => b.powerUnits - a.powerUnits);
@@ -312,7 +343,6 @@ export default function ProspectPage() {
     return sorted;
   }, [stateFilter, minUnits, maxUnits, authorizedOnly, renewalMonth, sortMode]);
 
-  // Generic search runner
   const runSearch = useCallback(async (mode?: 'new') => {
     const q = query.trim();
     setLoading(true);
@@ -325,31 +355,26 @@ export default function ProspectPage() {
       let carriers: FMCSACarrier[] = [];
 
       if (mode === 'new') {
-        // New Ventures button
         setSearchMode('new');
         setLoadingMsg(`Sweeping FMCSA for new ventures${stateFilter ? ` in ${stateFilter}` : ''}…`);
         carriers = await fmcsaNewVentures(stateFilter || undefined, 500);
       } else if (/^\d{4,}$/.test(q)) {
-        // Direct DOT lookup
         setSearchMode('dot');
         setLoadingMsg(`Looking up DOT# ${q}…`);
         const c = await fmcsaLookupDOT(q);
         if (c) carriers = [c];
         else setError(`No carrier found for DOT# ${q}`);
       } else if (q) {
-        // Name search
         setSearchMode('name');
         setLoadingMsg(`Searching for "${q}"…`);
         carriers = await fmcsaSearchName(q, 100);
         if (carriers.length === 0) setError(`No carriers found matching "${q}"`);
       } else if (stateFilter) {
-        // State-only browse
         setSearchMode('state');
         setLoadingMsg(`Browsing carriers in ${stateFilter}…`);
         carriers = await fmcsaBrowseState(stateFilter);
         if (carriers.length === 0) setError(`No carriers found for ${stateFilter}`);
       } else {
-        // Pure browse-all
         setSearchMode('all');
         setLoadingMsg('Sweeping FMCSA database…');
         carriers = await fmcsaBrowseAll();
@@ -369,12 +394,17 @@ export default function ProspectPage() {
     }
   }, [query, stateFilter, applyFilters]);
 
-  const loadBasics = async (dot: string) => {
-    if (basicsByDot[dot] || basicsLoadingDot === dot) return;
+  const loadBasics = async (dot: string): Promise<FMCSABasicsResult | null> => {
+    if (basicsByDot[dot]) return basicsByDot[dot];
+    if (basicsLoadingDot === dot) return null;
     setBasicsLoadingDot(dot);
     try {
       const b = await fmcsaGetBasics(dot);
-      if (b) setBasicsByDot(prev => ({ ...prev, [dot]: b }));
+      if (b) {
+        setBasicsByDot(prev => ({ ...prev, [dot]: b }));
+        return b;
+      }
+      return null;
     } finally {
       setBasicsLoadingDot(null);
     }
@@ -388,8 +418,20 @@ export default function ProspectPage() {
     }
   };
 
-  const importLead = (c: FMCSACarrier, basics: FMCSABasicsResult | null) => {
+  // CRITICAL: always pull fresh BASICs before importing — even if not expanded.
+  const importLead = async (c: FMCSACarrier, cachedBasics: FMCSABasicsResult | null) => {
     if (leads.find(l => l.dot === c.dotNumber)) return alert('This DOT# is already in your leads.');
+
+    let basics: FMCSABasicsResult | null = cachedBasics ?? basicsByDot[c.dotNumber] ?? null;
+    if (!basics) {
+      setLoading(true);
+      setLoadingMsg(`Pulling BASICs for ${c.legalName}…`);
+      const fetched = await fmcsaGetBasics(c.dotNumber);
+      basics = fetched;
+      if (fetched) setBasicsByDot(prev => ({ ...prev, [c.dotNumber]: fetched }));
+      setLoading(false);
+    }
+
     addLead({
       id: 'l' + Date.now(),
       company: c.legalName, dot: c.dotNumber, contact: '', email: c.email, phone: c.phone,
@@ -402,8 +444,31 @@ export default function ProspectPage() {
       years: c.mcs150Date ? Math.max(0, new Date().getFullYear() - parseInt(c.mcs150Date.slice(0, 4) || '0')) : 0,
       fleet: c.powerUnits, boundDate: null,
     });
-    alert(`✓ ${c.legalName} imported to Leads!`);
+    alert(`${c.legalName} imported to Leads with full FMCSA data.`);
   };
+
+  const handleReset = () => {
+    setQuery(FILTER_DEFAULTS.query);
+    setStateFilter(FILTER_DEFAULTS.stateFilter);
+    setMinUnits(FILTER_DEFAULTS.minUnits);
+    setMaxUnits(FILTER_DEFAULTS.maxUnits);
+    setRenewalMonth(FILTER_DEFAULTS.renewalMonth);
+    setAuthorizedOnly(FILTER_DEFAULTS.authorizedOnly);
+    setSortMode(FILTER_DEFAULTS.sortMode);
+    setResults([]);
+    setSearched(false);
+    setError(null);
+    setExpandedDot(null);
+    setSearchMode('');
+  };
+
+  const hasActiveFilters = query !== FILTER_DEFAULTS.query
+    || stateFilter !== FILTER_DEFAULTS.stateFilter
+    || minUnits !== FILTER_DEFAULTS.minUnits
+    || maxUnits !== FILTER_DEFAULTS.maxUnits
+    || renewalMonth !== FILTER_DEFAULTS.renewalMonth
+    || authorizedOnly !== FILTER_DEFAULTS.authorizedOnly
+    || searched;
 
   return (
     <>
@@ -412,11 +477,10 @@ export default function ProspectPage() {
         <div style={{ fontSize: 13, color: '#64748b' }}>Live FMCSA database — inspections, crashes, BASICs violations, fleet &amp; contact data</div>
       </div>
       <div className="content">
-        {/* ── Search & Filter Panel ── */}
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 22, marginBottom: 18, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <div style={{ fontWeight: 700, fontSize: 14, color: '#1b2a4a', marginBottom: 3 }}>Search FMCSA Carrier Database</div>
           <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
-            Click <b>Search</b> with no criteria for a broad sweep · Use filters to narrow · Click <b>New Ventures</b> for newest registrations
+            Click <b>Search</b> with no criteria for a broad sweep · Use filters to narrow · Click <b>New Ventures</b> for newest registrations · Click <b>Reset</b> to clear
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -428,16 +492,17 @@ export default function ProspectPage() {
               onKeyDown={e => e.key === 'Enter' && runSearch()}
               style={{ flex: 2, minWidth: 220 }}
             />
-            <button className="btn-p" onClick={() => runSearch()} disabled={loading} style={{ minWidth: 110 }}>
-              {loading ? '⏳ Searching…' : '🔍 Search'}
+            <button className="btn-p" onClick={() => runSearch()} disabled={loading} style={{ minWidth: 120, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <IconSearch /> {loading ? 'Searching…' : 'Search'}
             </button>
             <button onClick={() => runSearch('new')} disabled={loading}
-              style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 10, padding: '0 16px', fontWeight: 600, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, minWidth: 130 }}>
-              ✨ New Ventures
+              style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 10, padding: '0 16px', fontWeight: 600, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, minWidth: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <IconSpark /> New Ventures
             </button>
-            {searched && (
-              <button className="btn-s" onClick={() => { setResults([]); setSearched(false); setError(null); setQuery(''); setExpandedDot(null); setSearchMode(''); }}>Clear</button>
-            )}
+            <button onClick={handleReset} disabled={loading || !hasActiveFilters}
+              style={{ background: '#fff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 10, padding: '0 14px', fontWeight: 600, fontSize: 13, cursor: (loading || !hasActiveFilters) ? 'not-allowed' : 'pointer', opacity: (loading || !hasActiveFilters) ? 0.5 : 1, minWidth: 100, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <IconReset /> Reset
+            </button>
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
@@ -472,7 +537,7 @@ export default function ProspectPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Sort:</label>
               <select className="sel" style={{ width: 130 }} value={sortMode} onChange={e => setSortMode(e.target.value as SortMode)}>
-                <option value="newest">Newest DOT (newest registrations)</option>
+                <option value="newest">Newest DOT</option>
                 <option value="fleet">Largest fleet</option>
                 <option value="state">State / Name</option>
                 <option value="name">Name (A–Z)</option>
@@ -492,7 +557,7 @@ export default function ProspectPage() {
 
         {error && (
           <div style={{ background: '#fff1f2', border: '1px solid #fda4af', borderRadius: 10, padding: '12px 16px', marginBottom: 14, color: '#9f1239', fontSize: 13 }}>
-            ⚠ {error}
+            {error}
           </div>
         )}
 
@@ -500,14 +565,14 @@ export default function ProspectPage() {
           <div>
             <div style={{ fontSize: 13, color: '#64748b', marginBottom: 10, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span>{results.length} carrier{results.length !== 1 ? 's' : ''} found</span>
-              {searchMode === 'new' && <span style={{ fontSize: 11, background: '#f0fdfa', color: '#0f766e', padding: '2px 8px', borderRadius: 100, fontWeight: 700 }}>✨ New Ventures (newest DOTs first)</span>}
+              {searchMode === 'new' && <span style={{ fontSize: 11, background: '#f0fdfa', color: '#0f766e', padding: '2px 8px', borderRadius: 100, fontWeight: 700 }}>New Ventures (newest DOTs first)</span>}
               {searchMode === 'all' && <span style={{ fontSize: 11, background: '#eff6ff', color: '#2563eb', padding: '2px 8px', borderRadius: 100 }}>Database sweep</span>}
-              {searchMode === 'state' && <span style={{ fontSize: 11, background: '#eff6ff', color: '#2563eb', padding: '2px 8px', borderRadius: 100 }}>📍 {stateFilter}</span>}
+              {searchMode === 'state' && <span style={{ fontSize: 11, background: '#eff6ff', color: '#2563eb', padding: '2px 8px', borderRadius: 100 }}>{stateFilter}</span>}
               {stateFilter && searchMode !== 'state' && <span style={{ fontSize: 11 }}>· {stateFilter} only</span>}
               {minUnits && <span style={{ fontSize: 11 }}>· {minUnits}+ units</span>}
               {maxUnits && <span style={{ fontSize: 11 }}>· ≤{maxUnits} units</span>}
-              {renewalMonth && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 100 }}>📅 Renewal: {renewalMonth}</span>}
-              {authorizedOnly && <span style={{ fontSize: 11, background: '#f0fdfa', color: '#0f766e', padding: '2px 8px', borderRadius: 100 }}>✓ Authorized</span>}
+              {renewalMonth && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 100 }}>Renewal: {renewalMonth}</span>}
+              {authorizedOnly && <span style={{ fontSize: 11, background: '#f0fdfa', color: '#0f766e', padding: '2px 8px', borderRadius: 100 }}>Authorized</span>}
             </div>
             {results.map(c => (
               <CarrierCard
@@ -524,24 +589,12 @@ export default function ProspectPage() {
 
         {!searched && !loading && (
           <div style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
-            <div style={{ fontSize: 44, marginBottom: 14 }}>🔍</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#1b2a4a', marginBottom: 6 }}>Search the FMCSA database</div>
-            <div style={{ fontSize: 13, maxWidth: 460, margin: '0 auto 28px', lineHeight: 1.6, color: '#64748b' }}>
-              <b>Just click Search</b> for a broad database sweep, or use any combination of DOT#, name, state, fleet size, and renewal month to narrow down. Use <b>New Ventures</b> to find recently-registered carriers — perfect for fresh leads.
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 56, height: 56, borderRadius: 14, background: '#f1f5f9', color: '#64748b', marginBottom: 14 }}>
+              <IconSearch size={26} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, maxWidth: 620, margin: '0 auto' }}>
-              {[
-                ['🏢', 'Live FMCSA', 'Real-time carrier data'],
-                ['✨', 'New Ventures', 'Newest registrations first'],
-                ['📊', 'BASICs Data', 'Violations, OOS, alerts'],
-                ['📋', '1-Click Import', 'Add to leads pipeline'],
-              ].map(([icon, title, desc]) => (
-                <div key={title} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 20, marginBottom: 5 }}>{icon}</div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1b2a4a', marginBottom: 3 }}>{title}</div>
-                  <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>{desc}</div>
-                </div>
-              ))}
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#1b2a4a', marginBottom: 6 }}>Search the FMCSA database</div>
+            <div style={{ fontSize: 13, maxWidth: 480, margin: '0 auto 28px', lineHeight: 1.6, color: '#64748b' }}>
+              Just click <b>Search</b> for a broad database sweep, or use any combination of DOT#, name, state, fleet size, and renewal month to narrow down. Use <b>New Ventures</b> to find recently-registered carriers — perfect for fresh leads.
             </div>
           </div>
         )}
