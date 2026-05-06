@@ -3,14 +3,14 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Trophy, Users, Kanban, Building2, Search,
-  FileText, Contact, CheckCircle, BarChart2, Shield, LogOut,
+  FileText, Contact, CheckCircle, BarChart2, Shield, LogOut, Settings,
 } from 'lucide-react';
 import { useCRMStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth';
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Trophy, Users, Kanban, Building2, Search,
-  FileText, Contact, CheckCircle, BarChart2, Shield,
+  FileText, Contact, CheckCircle, BarChart2, Shield, Settings,
 };
 
 interface NavTab {
@@ -34,6 +34,7 @@ const TABS: (NavTab | { sep: true })[] = [
   { key: 'policy',       label: 'Policies & Bound',     icon: 'CheckCircle',     href: '/policy' },
   { key: 'analytics',    label: 'Analytics',            icon: 'BarChart2',       href: '/analytics' },
   { sep: true },
+  { key: 'settings',     label: 'Settings',             icon: 'Settings',        href: '/settings' },
   { key: 'admin',        label: 'Admin Panel',          icon: 'Shield',          href: '/admin', adminOnly: true },
 ];
 

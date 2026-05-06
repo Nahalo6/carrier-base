@@ -72,6 +72,14 @@ export interface MarketStatus {
   status: 'Pending' | 'Submitted' | 'Quoted' | 'Bound' | 'Declined' | 'No Appetite';
 }
 
+export interface EmailAttachment {
+  name: string;
+  size: string;
+  mimeType?: string;
+  dataUrl?: string;       // base64 — small attachments stored inline
+  docId?: string;         // when attached from the account's Documents
+}
+
 export interface Email {
   date: string;
   subj: string;
@@ -82,7 +90,7 @@ export interface Email {
   from?: string;
   fromName?: string;
   tag?: string;
-  attachments?: { name: string; size: string }[];
+  attachments?: EmailAttachment[];
   read?: boolean;
 }
 

@@ -4,18 +4,41 @@ import { persist } from 'zustand/middleware';
 
 export type UserRole = 'admin' | 'manager' | 'producer';
 
+export type EmailProvider = 'gmail' | 'outlook' | 'smtp' | 'resend';
+
+export interface EmailIntegration {
+  provider: EmailProvider;
+  fromAddress: string;       // the connected email account
+  fromName?: string;
+  // Provider-specific:
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUsername?: string;
+  smtpUseTLS?: boolean;
+  signature?: string;
+  connectedAt: string;
+  status: 'connected' | 'error' | 'pending';
+}
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  password: string;          // demo only — real impl would be hashed server-side
+  password: string;
   role: UserRole;
   status: 'active' | 'suspended';
   createdDate: string;
   lastLogin?: string;
-  tempPassword?: boolean;    // true when admin creates user with auto-pw
-  plan?: string;             // solo / agency / enterprise
+  tempPassword?: boolean;
+  plan?: string;
   phone?: string;
+  emailIntegration?: EmailIntegration | null;
+  emailSignature?: string;
+  notificationPrefs?: {
+    emailAlerts?: boolean;
+    renewalReminders?: boolean;
+    weeklyDigest?: boolean;
+  };
 }
 
 interface AuthState {
@@ -33,6 +56,9 @@ interface AuthState {
   changePassword: (id: string, newPassword: string) => void;
   setRole: (id: string, role: UserRole) => void;
   setStatus: (id: string, status: 'active' | 'suspended') => void;
+  connectEmail: (id: string, integration: EmailIntegration) => void;
+  disconnectEmail: (id: string) => void;
+  updateProfile: (id: string, updates: Partial<Pick<AuthUser, 'name' | 'phone' | 'emailSignature' | 'notificationPrefs'>>) => void;
 }
 
 function genTempPassword(): string {
@@ -128,6 +154,19 @@ export const useAuthStore = create<AuthState>()(
       setStatus: (id, status) => set(s => ({
         users: s.users.map(u => u.id === id ? { ...u, status } : u),
         currentUser: s.currentUser?.id === id && status === 'suspended' ? null : s.currentUser,
+      })),
+
+      connectEmail: (id, integration) => set(s => ({
+        users: s.users.map(u => u.id === id ? { ...u, emailIntegration: integration } : u),
+        currentUser: s.currentUser?.id === id ? { ...s.currentUser, emailIntegration: integration } : s.currentUser,
+      })),
+      disconnectEmail: (id) => set(s => ({
+        users: s.users.map(u => u.id === id ? { ...u, emailIntegration: null } : u),
+        currentUser: s.currentUser?.id === id ? { ...s.currentUser, emailIntegration: null } : s.currentUser,
+      })),
+      updateProfile: (id, updates) => set(s => ({
+        users: s.users.map(u => u.id === id ? { ...u, ...updates } : u),
+        currentUser: s.currentUser?.id === id ? { ...s.currentUser, ...updates } : s.currentUser,
       })),
     }),
     { name: 'carrier-base-auth' }

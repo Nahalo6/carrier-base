@@ -6,6 +6,7 @@ import { fmt$, unreadCount, getAlerts, basicBarColor, daysSince, stageBadgeColor
 import type { PreUWResult } from '@/lib/utils';
 import type { Lead, LeadStatus, Email, Driver, Vehicle, Policy } from '@/lib/types';
 import { fmcsaLookupDOT, fmcsaGetBasics, toSaferData } from '@/lib/fmcsa';
+import { useAuthStore } from '@/lib/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ProducerDot from '@/components/ui/ProducerDot';
 import Modal from '@/components/ui/Modal';
@@ -177,12 +178,85 @@ function ComposeModal({ lead, opts, onClose }: {
 }) {
   const addEmail = useCRMStore(s => s.addEmail);
   const contacts = useCRMStore(s => s.contacts);
+  const currentUser = useAuthStore(s => s.currentUser);
+  const ei = currentUser?.emailIntegration;
+  const fromAddress = ei?.fromAddress || 'noreply@carrierbase.app';
+  const fromName = ei?.fromName || currentUser?.name || 'Carrier Base';
+  const signature = ei?.signature || currentUser?.emailSignature || '';
   const [to, setTo] = useState(opts?.to ?? lead.email);
   const [toName, setToName] = useState(opts?.toName ?? lead.contact);
   const [subj, setSubj] = useState(opts?.subj ?? '');
-  const [body, setBody] = useState(opts?.body ?? '');
+  const [body, setBody] = useState(opts?.body ?? (signature ? '\n\n' + signature : ''));
   const [tag, setTag] = useState('');
   const [contactSel, setContactSel] = useState('');
+  const [attachments, setAttachments] = useState<import('@/lib/types').EmailAttachment[]>([]);
+  const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const [over, setOver] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+
+  const formatBytes = (n: number): string => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(2)} MB`;
+  };
+
+  const fileToDataUrl = (f: File): Promise<string> => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = rej;
+    r.readAsDataURL(f);
+  });
+
+  const handleAttachFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setAttachError(null);
+    const totalNew = Array.from(fileList).reduce((s, f) => s + f.size, 0);
+    const existingSize = attachments.reduce((s, a) => s + (a.dataUrl ? a.dataUrl.length * 0.75 : 0), 0);
+    if (totalNew + existingSize > 8 * 1024 * 1024) {
+      setAttachError('Combined attachments exceed 8 MB. Brokers may bounce large emails — consider attaching from documents instead.');
+      return;
+    }
+    try {
+      const newAttachments: import('@/lib/types').EmailAttachment[] = [];
+      for (const f of Array.from(fileList)) {
+        const dataUrl = await fileToDataUrl(f);
+        newAttachments.push({ name: f.name, size: formatBytes(f.size), mimeType: f.type, dataUrl });
+      }
+      setAttachments(prev => [...prev, ...newAttachments]);
+    } catch {
+      setAttachError('Could not attach one or more files.');
+    }
+  };
+
+  const attachExistingDoc = (docId: string) => {
+    const doc = lead.docs.find(d => d.id === docId);
+    if (!doc) return;
+    if (attachments.some(a => a.docId === docId)) {
+      // already attached
+      setDocPickerOpen(false);
+      return;
+    }
+    setAttachments(prev => [...prev, {
+      name: doc.name, size: doc.size, mimeType: doc.mimeType,
+      dataUrl: doc.dataUrl, docId: doc.id,
+    }]);
+    setDocPickerOpen(false);
+  };
+
+  const removeAttachment = (idx: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const docTypeIcon = (mime?: string, name?: string) => {
+    const m = (mime || '').toLowerCase();
+    const n = (name || '').toLowerCase();
+    if (m.includes('pdf') || n.endsWith('.pdf')) return 'PDF';
+    if (m.includes('word') || n.endsWith('.doc') || n.endsWith('.docx')) return 'DOC';
+    if (m.includes('sheet') || m.includes('excel') || n.endsWith('.xls') || n.endsWith('.xlsx') || n.endsWith('.csv')) return 'XLS';
+    if (m.includes('image') || n.endsWith('.jpg') || n.endsWith('.png') || n.endsWith('.jpeg')) return 'IMG';
+    if (n.endsWith('.eml') || n.endsWith('.msg')) return 'MSG';
+    return 'FILE';
+  };
 
   const handleContactPick = (id: string) => {
     setContactSel(id);
@@ -203,13 +277,36 @@ function ComposeModal({ lead, opts, onClose }: {
   }, {});
 
   const send = () => {
-    addEmail(lead.id, { date: todayISO(), subj, dir: 'out', body, to, toName, tag });
+    if (!to.trim()) return alert('Please enter a recipient email.');
+    if (!subj.trim()) return alert('Please enter a subject.');
+    addEmail(lead.id, {
+      date: todayISO(), subj, dir: 'out', body, to, toName, tag,
+      from: fromAddress, fromName,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    });
     onClose();
   };
 
   return (
     <Modal title="Compose Email" onClose={onClose} width={860}>
-      <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+
+        {/* From line */}
+        <div style={{ background: ei?.status === 'connected' ? '#f0fdfa' : '#fef3c7', border: `1px solid ${ei?.status === 'connected' ? '#5eead4' : '#fcd34d'}`, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+            <div>
+              <span style={{ fontWeight: 700, color: ei?.status === 'connected' ? '#0f766e' : '#92400e', textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.06em' }}>From</span>
+              <span style={{ marginLeft: 8, fontWeight: 700, color: '#1b2a4a' }}>{fromName}</span>
+              <span style={{ marginLeft: 6, color: '#475569' }}>&lt;{fromAddress}&gt;</span>
+            </div>
+            {!ei?.status && (
+              <a href="/settings" style={{ fontSize: 11, color: '#92400e', fontWeight: 600, textDecoration: 'underline' }}>
+                Connect your email →
+              </a>
+            )}
+          </div>
+        </div>
+
         {contacts.length > 0 && (
           <div style={{ marginBottom: 14, padding: 12, background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 10 }}>
             <label className="lbl" style={{ color: '#1e40af', marginBottom: 6 }}>Pick a contact (optional)</label>
@@ -226,17 +323,19 @@ function ComposeModal({ lead, opts, onClose }: {
             <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>Selecting a contact pre-fills the To fields below.</div>
           </div>
         )}
-        <div style={{ marginBottom: 12 }}>
-          <label className="lbl">To (Email)</label>
-          <input className="inp" value={to} onChange={e => setTo(e.target.value)} />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label className="lbl">To (Name)</label>
-          <input className="inp" value={toName} onChange={e => setToName(e.target.value)} />
+        <div className="grid grid-2" style={{ gap: 12, marginBottom: 12 }}>
+          <div>
+            <label className="lbl">To (Email)</label>
+            <input className="inp" value={to} onChange={e => setTo(e.target.value)} placeholder="recipient@market.com" />
+          </div>
+          <div>
+            <label className="lbl">To (Name)</label>
+            <input className="inp" value={toName} onChange={e => setToName(e.target.value)} placeholder="Recipient name" />
+          </div>
         </div>
         <div style={{ marginBottom: 12 }}>
           <label className="lbl">Subject</label>
-          <input className="inp" value={subj} onChange={e => setSubj(e.target.value)} />
+          <input className="inp" value={subj} onChange={e => setSubj(e.target.value)} placeholder="Submission — [Account Name]" />
         </div>
         <div style={{ marginBottom: 12 }}>
           <label className="lbl">Tag</label>
@@ -247,12 +346,122 @@ function ComposeModal({ lead, opts, onClose }: {
         </div>
         <div style={{ marginBottom: 12 }}>
           <label className="lbl">Body</label>
-          <textarea className="inp" rows={8} value={body} onChange={e => setBody(e.target.value)} />
+          <textarea className="inp" rows={8} value={body} onChange={e => setBody(e.target.value)} placeholder="Hi [Name],&#10;&#10;Please find attached our submission for…" />
         </div>
-        <div className="flex" style={{ justifyContent: 'flex-end', gap: 10 }}>
-          <button className="btn-s" onClick={onClose}>Cancel</button>
-          <button className="btn-p" onClick={send}>Send Email</button>
+
+        {/* ── Attachments ── */}
+        <div style={{ marginBottom: 16 }}>
+          <div className="flex flex-between" style={{ marginBottom: 8 }}>
+            <label className="lbl" style={{ marginBottom: 0 }}>Attachments {attachments.length > 0 && <span style={{ fontWeight: 600, color: '#475569' }}>({attachments.length})</span>}</label>
+            {lead.docs.length > 0 && (
+              <button type="button" className="btn-s btn-sm" onClick={() => setDocPickerOpen(true)} style={{ fontSize: 11 }}>
+                Attach from Documents
+              </button>
+            )}
+          </div>
+
+          {/* Drop zone */}
+          <div
+            onDragOver={e => { e.preventDefault(); setOver(true); }}
+            onDragLeave={() => setOver(false)}
+            onDrop={e => { e.preventDefault(); setOver(false); handleAttachFiles(e.dataTransfer.files); }}
+            onClick={() => document.getElementById('compose-file-input')?.click()}
+            style={{
+              border: `2px dashed ${over ? '#2563eb' : '#cbd5e1'}`,
+              borderRadius: 10, padding: '14px 16px',
+              background: over ? '#eff6ff' : '#f8fafc',
+              cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s',
+            }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={over ? '#2563eb' : '#64748b'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 4 }}>
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#1b2a4a', marginBottom: 2 }}>Drop files here or click to attach</div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>PDFs, Word, Excel, images, .eml — multi-file OK · 8 MB combined</div>
+            <input id="compose-file-input" type="file" multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.txt,.eml,.msg,application/pdf,image/*"
+              style={{ display: 'none' }}
+              onChange={e => handleAttachFiles(e.target.files)} />
+          </div>
+
+          {attachError && (
+            <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff1f2', border: '1px solid #fda4af', borderRadius: 8, fontSize: 12, color: '#9f1239' }}>{attachError}</div>
+          )}
+
+          {/* Attachment list */}
+          {attachments.length > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {attachments.map((a, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 6, background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>
+                    {docTypeIcon(a.mimeType, a.name)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: '#1b2a4a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                    <div style={{ fontSize: 10, color: '#64748b' }}>
+                      {a.size}
+                      {a.docId && <span style={{ marginLeft: 6, color: '#0f766e', fontWeight: 600 }}>· from Documents</span>}
+                    </div>
+                  </div>
+                  <button className="btn-s btn-sm btn-danger" onClick={() => removeAttachment(i)}>×</button>
+                </div>
+              ))}
+              <div style={{ fontSize: 10, color: '#94a3b8', textAlign: 'right' }}>
+                Total: {attachments.length} file{attachments.length !== 1 ? 's' : ''} · {formatBytes(attachments.reduce((s, a) => s + (a.dataUrl ? Math.round(a.dataUrl.length * 0.75) : 0), 0))}
+              </div>
+            </div>
+          )}
         </div>
+
+        <div className="flex flex-between" style={{ alignItems: 'center', paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ fontSize: 11, color: '#94a3b8' }}>
+            {attachments.length > 0 ? `Sending with ${attachments.length} attachment${attachments.length > 1 ? 's' : ''}` : 'No attachments'}
+          </div>
+          <div className="flex" style={{ gap: 10 }}>
+            <button className="btn-s" onClick={onClose}>Cancel</button>
+            <button className="btn-p" onClick={send}>Send Email</button>
+          </div>
+        </div>
+
+        {/* Document picker overlay */}
+        {docPickerOpen && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={() => setDocPickerOpen(false)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: 560, maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#1b2a4a' }}>Attach from this account&rsquo;s Documents</div>
+              <div style={{ overflowY: 'auto', flex: 1, padding: 8 }}>
+                {lead.docs.length === 0 ? (
+                  <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>No documents on this account yet.</div>
+                ) : DOC_TAGS.map(t => {
+                  const docs = lead.docs.filter(d => d.tag === t);
+                  if (!docs.length) return null;
+                  return (
+                    <div key={t} style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 12px' }}>{t}</div>
+                      {docs.map(d => {
+                        const already = attachments.some(a => a.docId === d.id);
+                        return (
+                          <button key={d.id} disabled={already} onClick={() => attachExistingDoc(d.id)}
+                            style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: already ? '#f0fdfa' : '#fff', border: 'none', borderTop: '1px solid #f1f5f9', cursor: already ? 'default' : 'pointer', opacity: already ? 0.7 : 1 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 6, background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>
+                              {docTypeIcon(d.mimeType, d.name)}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, fontSize: 12, color: '#1b2a4a' }}>{d.name}</div>
+                              <div style={{ fontSize: 10, color: '#64748b' }}>{d.size} · {d.date}</div>
+                            </div>
+                            {already && <span style={{ fontSize: 10, fontWeight: 700, color: '#0f766e' }}>Already attached</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ padding: 14, borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>
+                <button className="btn-s" onClick={() => setDocPickerOpen(false)}>Done</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -1247,6 +1456,32 @@ function LeadDetail({ lead, onEdit, onClose, onDelete }: { lead: Lead; onEdit: (
                         {e.dir === 'out' ? `To: ${e.toName || freshLead.contact} <${e.to || freshLead.email}>` : `From: ${e.fromName || freshLead.contact} <${freshLead.email}>`}
                       </div>
                       <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 12 }}>{e.body}</div>
+
+                      {/* Attachments */}
+                      {e.attachments && e.attachments.length > 0 && (
+                        <div style={{ marginBottom: 12, padding: 10, background: '#f8fafc', borderRadius: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                            {e.attachments.length} attachment{e.attachments.length > 1 ? 's' : ''}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            {e.attachments.map((a, ai) => (
+                              <div key={ai} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                                <div style={{ width: 26, height: 26, borderRadius: 4, background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 800 }}>
+                                  {(a.name.split('.').pop() || 'FILE').slice(0, 4).toUpperCase()}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1b2a4a' }}>{a.name}</div>
+                                  <div style={{ fontSize: 10, color: '#64748b' }}>{a.size}</div>
+                                </div>
+                                {a.dataUrl && (
+                                  <a href={a.dataUrl} download={a.name} className="btn-s btn-sm" style={{ fontSize: 10 }}>Download</a>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex flex-between">
                         <select style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, color: '#475569', background: '#fff' }}
                           value={e.tag || ''} onChange={ev => updateEmailTag(freshLead.id, realIdx, ev.target.value)}>
@@ -1254,9 +1489,9 @@ function LeadDetail({ lead, onEdit, onClose, onDelete }: { lead: Lead; onEdit: (
                           {EMAIL_TAGS.map(t => <option key={t}>{t}</option>)}
                         </select>
                         <div className="flex" style={{ gap: 6 }}>
-                          <button className="btn-s btn-sm" onClick={() => reply(realIdx)}>↩ Reply</button>
-                          <button className="btn-s btn-sm" onClick={() => forward(realIdx)}>↪ Forward</button>
-                          <button className="btn-s btn-sm btn-danger" onClick={() => { if (confirm('Delete this email?')) deleteEmail(freshLead.id, realIdx); }}>🗑 Delete</button>
+                          <button className="btn-s btn-sm" onClick={() => reply(realIdx)}>Reply</button>
+                          <button className="btn-s btn-sm" onClick={() => forward(realIdx)}>Forward</button>
+                          <button className="btn-s btn-sm btn-danger" onClick={() => { if (confirm('Delete this email?')) deleteEmail(freshLead.id, realIdx); }}>Delete</button>
                         </div>
                       </div>
                     </div>
