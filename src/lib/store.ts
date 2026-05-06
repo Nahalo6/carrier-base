@@ -1,7 +1,7 @@
 'use client';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Lead, Market, Producer, Contact, Application, LeadStatus } from './types';
+import type { Lead, Market, Producer, Contact, Application, LeadStatus, Policy, Driver, Vehicle, MVROrder } from './types';
 import {
   INITIAL_LEADS, INITIAL_MARKETS, INITIAL_PRODUCERS,
   INITIAL_APPLICATIONS, INITIAL_TEAM_GOAL,
@@ -53,6 +53,25 @@ interface CRMState {
   addApp: (app: Application) => void;
   updateApp: (id: string, updates: Partial<Application>) => void;
   deleteApp: (id: string) => void;
+
+  // Policy actions
+  addPolicy: (leadId: string, policy: Policy) => void;
+  updatePolicy: (leadId: string, policyId: string, updates: Partial<Policy>) => void;
+  deletePolicy: (leadId: string, policyId: string) => void;
+
+  // Driver / Vehicle actions
+  addDriver: (leadId: string, driver: Driver) => void;
+  addDriversBulk: (leadId: string, drivers: Driver[]) => void;
+  updateDriver: (leadId: string, idx: number, updates: Partial<Driver>) => void;
+  deleteDriver: (leadId: string, idx: number) => void;
+  addVehicle: (leadId: string, vehicle: Vehicle) => void;
+  addVehiclesBulk: (leadId: string, vehicles: Vehicle[]) => void;
+  updateVehicle: (leadId: string, idx: number, updates: Partial<Vehicle>) => void;
+  deleteVehicle: (leadId: string, idx: number) => void;
+
+  // MVR actions
+  addMVROrder: (leadId: string, order: MVROrder) => void;
+  updateMVROrder: (leadId: string, orderId: string, updates: Partial<MVROrder>) => void;
 }
 
 export const useCRMStore = create<CRMState>()(
@@ -161,6 +180,83 @@ export const useCRMStore = create<CRMState>()(
       addApp: (app) => set(s => ({ apps: [...s.apps, app] })),
       updateApp: (id, updates) => set(s => ({ apps: s.apps.map(a => a.id === id ? { ...a, ...updates } : a) })),
       deleteApp: (id) => set(s => ({ apps: s.apps.filter(a => a.id !== id) })),
+
+      // ── Policies ──
+      addPolicy: (leadId, policy) => set(s => ({
+        leads: s.leads.map(l => l.id === leadId ? { ...l, policies: [...(l.policies || []), policy] } : l),
+      })),
+      updatePolicy: (leadId, policyId, updates) => set(s => ({
+        leads: s.leads.map(l => {
+          if (l.id !== leadId) return l;
+          const policies = (l.policies || []).map(p => p.id === policyId ? { ...p, ...updates } : p);
+          return { ...l, policies };
+        }),
+      })),
+      deletePolicy: (leadId, policyId) => set(s => ({
+        leads: s.leads.map(l => l.id === leadId
+          ? { ...l, policies: (l.policies || []).filter(p => p.id !== policyId) }
+          : l),
+      })),
+
+      // ── Drivers ──
+      addDriver: (leadId, driver) => set(s => ({
+        leads: s.leads.map(l => l.id === leadId ? { ...l, drivers: [...(l.drivers || []), driver] } : l),
+      })),
+      addDriversBulk: (leadId, drivers) => set(s => ({
+        leads: s.leads.map(l => l.id === leadId ? { ...l, drivers: [...(l.drivers || []), ...drivers] } : l),
+      })),
+      updateDriver: (leadId, idx, updates) => set(s => ({
+        leads: s.leads.map(l => {
+          if (l.id !== leadId) return l;
+          const drivers = [...(l.drivers || [])];
+          if (drivers[idx]) drivers[idx] = { ...drivers[idx], ...updates };
+          return { ...l, drivers };
+        }),
+      })),
+      deleteDriver: (leadId, idx) => set(s => ({
+        leads: s.leads.map(l => {
+          if (l.id !== leadId) return l;
+          const drivers = [...(l.drivers || [])];
+          drivers.splice(idx, 1);
+          return { ...l, drivers };
+        }),
+      })),
+
+      // ── Vehicles ──
+      addVehicle: (leadId, vehicle) => set(s => ({
+        leads: s.leads.map(l => l.id === leadId ? { ...l, vehicleList: [...(l.vehicleList || []), vehicle] } : l),
+      })),
+      addVehiclesBulk: (leadId, vehicles) => set(s => ({
+        leads: s.leads.map(l => l.id === leadId ? { ...l, vehicleList: [...(l.vehicleList || []), ...vehicles] } : l),
+      })),
+      updateVehicle: (leadId, idx, updates) => set(s => ({
+        leads: s.leads.map(l => {
+          if (l.id !== leadId) return l;
+          const vehicleList = [...(l.vehicleList || [])];
+          if (vehicleList[idx]) vehicleList[idx] = { ...vehicleList[idx], ...updates };
+          return { ...l, vehicleList };
+        }),
+      })),
+      deleteVehicle: (leadId, idx) => set(s => ({
+        leads: s.leads.map(l => {
+          if (l.id !== leadId) return l;
+          const vehicleList = [...(l.vehicleList || [])];
+          vehicleList.splice(idx, 1);
+          return { ...l, vehicleList };
+        }),
+      })),
+
+      // ── MVR ──
+      addMVROrder: (leadId, order) => set(s => ({
+        leads: s.leads.map(l => l.id === leadId ? { ...l, mvrOrders: [...(l.mvrOrders || []), order] } : l),
+      })),
+      updateMVROrder: (leadId, orderId, updates) => set(s => ({
+        leads: s.leads.map(l => {
+          if (l.id !== leadId) return l;
+          const mvrOrders = (l.mvrOrders || []).map(o => o.id === orderId ? { ...o, ...updates } : o);
+          return { ...l, mvrOrders };
+        }),
+      })),
     }),
     { name: 'carrier-base-crm' }
   )

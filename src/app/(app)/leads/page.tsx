@@ -1,14 +1,21 @@
 'use client';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCRMStore } from '@/lib/store';
 import { STATUSES, STATUS_COLORS, BASIC_CATS, DOC_TAG_COLORS, EMAIL_TAG_COLORS, EMAIL_TAGS, DOC_TAGS } from '@/lib/constants';
 import { fmt$, unreadCount, getAlerts, basicBarColor, daysSince, stageBadgeColor, producerDotColor, todayISO, runPreUW } from '@/lib/utils';
 import type { PreUWResult } from '@/lib/utils';
-import type { Lead, LeadStatus, Email } from '@/lib/types';
+import type { Lead, LeadStatus, Email, Driver, Vehicle, Policy } from '@/lib/types';
 import { fmcsaLookupDOT, fmcsaGetBasics, toSaferData } from '@/lib/fmcsa';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ProducerDot from '@/components/ui/ProducerDot';
 import Modal from '@/components/ui/Modal';
+import CABScorePanel from '@/components/CABScorePanel';
+import PolicyModal from '@/components/PolicyModal';
+import DriverModal from '@/components/DriverModal';
+import VehicleModal from '@/components/VehicleModal';
+import MVROrderModal from '@/components/MVROrderModal';
+import DropZone from '@/components/DropZone';
+import { parseSpreadsheet, rowsToDrivers, rowsToVehicles, downloadDriverTemplate, downloadVehicleTemplate } from '@/lib/excel';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 function AlertBadge({ basics }: { basics: import('@/lib/types').SaferBasics | null | undefined }) {
@@ -400,6 +407,7 @@ const DETAIL_TABS = [
   { key: 'docs',     label: 'Documents' },
   { key: 'drivers',  label: 'Drivers' },
   { key: 'vehicles', label: 'Vehicles' },
+  { key: 'policies', label: 'Policies' },
   { key: 'safer',    label: 'SAFER / FMCSA' },
   { key: 'markets',  label: 'Markets' },
 ];
@@ -410,7 +418,15 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
   const [showCompose, setShowCompose] = useState(false);
   const [saferLoading, setSaferLoading] = useState(false);
   const [saferError, setSaferError] = useState<string | null>(null);
+  // Policy / Driver / Vehicle / MVR modal state
+  const [policyModal, setPolicyModal] = useState<{ open: boolean; policy?: Policy }>({ open: false });
+  const [driverModal, setDriverModal] = useState<{ open: boolean; driver?: Driver; idx?: number }>({ open: false });
+  const [vehicleModal, setVehicleModal] = useState<{ open: boolean; vehicle?: Vehicle; idx?: number }>({ open: false });
+  const [mvrModal, setMvrModal] = useState(false);
+  const [bulkDriverError, setBulkDriverError] = useState<string | null>(null);
+  const [bulkVehicleError, setBulkVehicleError] = useState<string | null>(null);
   const markets = useCRMStore(s => s.markets);
+  const producers = useCRMStore(s => s.producers);
   const setLeadStatus = useCRMStore(s => s.setLeadStatus);
   const updateLead = useCRMStore(s => s.updateLead);
   const deleteEmail = useCRMStore(s => s.deleteEmail);
@@ -419,9 +435,78 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
   const addMarketToLead = useCRMStore(s => s.addMarketToLead);
   const expandedEmails = useCRMStore(s => s.expandedEmails);
   const toggleEmailExpand = useCRMStore(s => s.toggleEmailExpand);
+  const addDriversBulk = useCRMStore(s => s.addDriversBulk);
+  const addVehiclesBulk = useCRMStore(s => s.addVehiclesBulk);
+  const deleteDriver = useCRMStore(s => s.deleteDriver);
+  const deleteVehicle = useCRMStore(s => s.deleteVehicle);
+  const deletePolicy = useCRMStore(s => s.deletePolicy);
   const leads = useCRMStore(s => s.leads);
   // Get fresh lead from store
   const freshLead = leads.find(l => l.id === lead.id) || lead;
+
+  const handleDriverFile = async (file: File) => {
+    setBulkDriverError(null);
+    try {
+      const rows = await parseSpreadsheet(file);
+      const drivers = rowsToDrivers(rows);
+      if (drivers.length === 0) {
+        setBulkDriverError('No driver rows detected. Verify columns match the template (First Name, Last Name, etc.)');
+        return;
+      }
+      addDriversBulk(freshLead.id, drivers);
+      alert(`Imported ${drivers.length} driver${drivers.length > 1 ? 's' : ''} from ${file.name}`);
+    } catch {
+      setBulkDriverError('Failed to parse spreadsheet. Make sure the file is .xlsx, .xls, or .csv with a header row.');
+    }
+  };
+
+  const handleVehicleFile = async (file: File) => {
+    setBulkVehicleError(null);
+    try {
+      const rows = await parseSpreadsheet(file);
+      const vehicles = rowsToVehicles(rows);
+      if (vehicles.length === 0) {
+        setBulkVehicleError('No vehicle rows detected. Verify columns match the template (VIN, Make, Model, etc.)');
+        return;
+      }
+      addVehiclesBulk(freshLead.id, vehicles);
+      alert(`Imported ${vehicles.length} vehicle${vehicles.length > 1 ? 's' : ''} from ${file.name}`);
+    } catch {
+      setBulkVehicleError('Failed to parse spreadsheet. Make sure the file is .xlsx, .xls, or .csv with a header row.');
+    }
+  };
+
+  // Build a synthetic FMCSACarrier object from the lead's stored SAFER data so we can render the CAB Score panel
+  const cabCarrier = useMemo(() => {
+    const s = freshLead.safer;
+    if (!s) return null;
+    return {
+      dotNumber: s.dotNumber, mcNumber: s.mcNumber, legalName: s.legalName, dbaName: '',
+      address: s.address, city: '', state: '', zip: '', phone: s.phone, email: '',
+      operatingStatus: s.opType, authorityStatus: '', safetyRating: s.safetyRating,
+      safetyRatingDate: '', powerUnits: s.mcs150.powerUnits, drivers: s.mcs150.drivers,
+      mcs150Date: s.mcs150.lastUpdate, mcs150Mileage: s.mcs150.mileage, mileageYear: s.mcs150.year,
+      hmFlag: false, pcFlag: false, cargoTypes: [], allowedToOperate: true, opType: s.opType,
+      vehicleInsp: 0, vehicleOosInsp: s.inspections.vOOS, vehicleOosRate: s.inspections.vRate,
+      driverInsp: 0, driverOosInsp: s.inspections.dOOS, driverOosRate: s.inspections.dRate,
+      crashTotal: s.crashes.total, fatalCrash: s.crashes.fatal, injCrash: s.crashes.injury,
+      towawayCrash: s.crashes.tow, bipdOnFile: s.insurance.policy === 'On File',
+      bipdRequired: !!s.insurance.current, bipdAmount: s.insurance.coverage.replace(/[$,]/g, '').replace(',000', ''),
+    };
+  }, [freshLead.safer]);
+
+  const cabBasics = useMemo(() => {
+    const s = freshLead.safer;
+    if (!s?.basics?.details) return null;
+    return {
+      unsafeDriving: s.basics.unsafeDriving, hoursOfService: s.basics.hoursOfService,
+      driverFitness: s.basics.driverFitness, controlledSubstances: s.basics.controlledSubstances,
+      vehicleMaintenance: s.basics.vehicleMaintenance, crashIndicator: s.basics.crashIndicator,
+      hmCompliance: s.basics.hmCompliance, alerts: [],
+      details: s.basics.details, hasAnyData: s.basics.hasAnyData ?? false,
+      totalViolations: s.basics.totalViolations ?? 0, totalInspections: 0,
+    };
+  }, [freshLead.safer]);
 
   const pullFMCSAData = async () => {
     const dot = freshLead.dot?.trim();
@@ -664,44 +749,171 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
         {/* DRIVERS */}
         {tab === 'drivers' && (
           <div>
-            {(!freshLead.drivers || freshLead.drivers.length === 0) && <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No driver records.</div>}
-            {(freshLead.drivers || []).map((d, i) => (
-              <div key={i} className="card" style={{ cursor: 'default' }}>
-                <div className="flex flex-between">
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{d.firstName} {d.lastName}</div>
-                  <span className={`badge ${d.mvrStatus === 'Clean' ? 'alert-clean' : d.mvrStatus === 'Issues Found' ? 'alert-warn' : 'alert-badge'}`}>{d.mvrStatus}</span>
-                </div>
-                <div className="grid grid-3" style={{ gap: 8, marginTop: 8, fontSize: 12 }}>
-                  <div><span style={{ color: '#64748b' }}>CDL: </span>{d.cdlNumber}</div>
-                  <div><span style={{ color: '#64748b' }}>State: </span>{d.state}</div>
-                  <div><span style={{ color: '#64748b' }}>Exp: </span>{d.experience} yrs</div>
-                  <div><span style={{ color: '#64748b' }}>Accidents: </span>{d.accidents}</div>
-                  <div><span style={{ color: '#64748b' }}>Violations: </span>{d.violations}</div>
-                  <div><span style={{ color: '#64748b' }}>MVR Date: </span>{d.mvrDate}</div>
-                </div>
+            <div className="flex flex-between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontSize: 13, color: '#64748b' }}>
+                {(freshLead.drivers || []).length} driver{(freshLead.drivers || []).length !== 1 ? 's' : ''} on file
+                {(freshLead.mvrOrders || []).length > 0 && <span> · {(freshLead.mvrOrders || []).length} MVR{(freshLead.mvrOrders || []).length > 1 ? 's' : ''} ordered</span>}
               </div>
-            ))}
+              <div className="flex" style={{ gap: 6 }}>
+                <button className="btn-s btn-sm" onClick={() => setMvrModal(true)} disabled={(freshLead.drivers || []).length === 0}>Order MVRs</button>
+                <button className="btn-p btn-sm" onClick={() => setDriverModal({ open: true })}>+ Add Driver</button>
+              </div>
+            </div>
+
+            {/* Drop zone for bulk upload */}
+            <div style={{ marginBottom: 14 }}>
+              <DropZone
+                onFile={handleDriverFile}
+                label="Drag &amp; drop a driver schedule"
+                helperText="Excel/CSV with headers: First Name, Last Name, DOB, State, DL Number, CDL Number, Experience, Accidents, Violations, MVR Status, MVR Date"
+                onTemplate={downloadDriverTemplate}
+              />
+              {bulkDriverError && (
+                <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff1f2', border: '1px solid #fda4af', borderRadius: 8, fontSize: 12, color: '#9f1239' }}>{bulkDriverError}</div>
+              )}
+            </div>
+
+            {(!freshLead.drivers || freshLead.drivers.length === 0) && (
+              <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No driver records yet — add manually or drop a spreadsheet above.</div>
+            )}
+
+            {(freshLead.drivers || []).map((d, i) => {
+              const mvrsForDriver = (freshLead.mvrOrders || []).filter(o => o.driverIndex === i);
+              const lastMvr = mvrsForDriver[mvrsForDriver.length - 1];
+              return (
+                <div key={i} className="card" style={{ cursor: 'default' }}>
+                  <div className="flex flex-between">
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{d.firstName} {d.lastName}</div>
+                    <div className="flex" style={{ gap: 6 }}>
+                      <span className={`badge ${d.mvrStatus === 'Clean' ? 'alert-clean' : d.mvrStatus === 'Issues Found' ? 'alert-warn' : 'alert-badge'}`}>{d.mvrStatus}</span>
+                      <button className="btn-s btn-sm" onClick={() => setDriverModal({ open: true, driver: d, idx: i })}>Edit</button>
+                      <button className="btn-s btn-sm btn-danger" onClick={() => { if (confirm(`Remove ${d.firstName} ${d.lastName}?`)) deleteDriver(freshLead.id, i); }}>×</button>
+                    </div>
+                  </div>
+                  <div className="grid grid-3" style={{ gap: 8, marginTop: 8, fontSize: 12 }}>
+                    <div><span style={{ color: '#64748b' }}>CDL: </span>{d.cdlNumber || '—'}</div>
+                    <div><span style={{ color: '#64748b' }}>State: </span>{d.state || '—'}</div>
+                    <div><span style={{ color: '#64748b' }}>Experience: </span>{d.experience} yrs</div>
+                    <div><span style={{ color: '#64748b' }}>Accidents: </span>{d.accidents}</div>
+                    <div><span style={{ color: '#64748b' }}>Violations: </span>{d.violations}</div>
+                    <div><span style={{ color: '#64748b' }}>MVR Date: </span>{d.mvrDate || '—'}</div>
+                  </div>
+                  {/* MVR order history for this driver */}
+                  {mvrsForDriver.length > 0 && (
+                    <div style={{ marginTop: 10, padding: 8, background: '#f8fafc', borderRadius: 8, fontSize: 11 }}>
+                      <div style={{ fontWeight: 600, color: '#1b2a4a', marginBottom: 4 }}>MVR Orders ({mvrsForDriver.length})</div>
+                      {mvrsForDriver.map(o => (
+                        <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                          <span>{o.orderedDate} via {o.vendor}</span>
+                          <span><span className={`tag ${o.status === 'Complete' ? 'tag-green' : o.status === 'Pending' ? 'tag-amber' : 'tag-red'}`}>{o.status}</span> · ${o.cost.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
         {/* VEHICLES */}
         {tab === 'vehicles' && (
           <div>
-            {(!freshLead.vehicleList || freshLead.vehicleList.length === 0) && <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No vehicle records.</div>}
+            <div className="flex flex-between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontSize: 13, color: '#64748b' }}>
+                {(freshLead.vehicleList || []).length} vehicle{(freshLead.vehicleList || []).length !== 1 ? 's' : ''} on schedule
+              </div>
+              <button className="btn-p btn-sm" onClick={() => setVehicleModal({ open: true })}>+ Add Vehicle</button>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <DropZone
+                onFile={handleVehicleFile}
+                label="Drag &amp; drop a vehicle schedule"
+                helperText="Excel/CSV with headers: Unit Number, Type, Year, Make, Model, VIN, Value, GVW"
+                onTemplate={downloadVehicleTemplate}
+              />
+              {bulkVehicleError && (
+                <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff1f2', border: '1px solid #fda4af', borderRadius: 8, fontSize: 12, color: '#9f1239' }}>{bulkVehicleError}</div>
+              )}
+            </div>
+
+            {(!freshLead.vehicleList || freshLead.vehicleList.length === 0) && (
+              <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No vehicle records yet — add manually or drop a spreadsheet above.</div>
+            )}
+
             {(freshLead.vehicleList || []).map((v, i) => (
               <div key={i} className="card" style={{ cursor: 'default' }}>
                 <div className="flex flex-between">
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{v.year} {v.make} {v.model}</div>
-                  <span className="tag tag-blue">{v.type}</span>
+                  <div className="flex" style={{ gap: 6 }}>
+                    <span className="tag tag-blue">{v.type}</span>
+                    <button className="btn-s btn-sm" onClick={() => setVehicleModal({ open: true, vehicle: v, idx: i })}>Edit</button>
+                    <button className="btn-s btn-sm btn-danger" onClick={() => { if (confirm(`Remove ${v.year} ${v.make} ${v.model}?`)) deleteVehicle(freshLead.id, i); }}>×</button>
+                  </div>
                 </div>
                 <div className="grid grid-3" style={{ gap: 8, marginTop: 8, fontSize: 12 }}>
-                  <div><span style={{ color: '#64748b' }}>Unit: </span>#{v.unitNumber}</div>
-                  <div><span style={{ color: '#64748b' }}>VIN: </span>{v.vin}</div>
-                  <div><span style={{ color: '#64748b' }}>Value: </span>{fmt$(v.value)}</div>
-                  <div><span style={{ color: '#64748b' }}>GVW: </span>{v.gvw.toLocaleString()} lbs</div>
+                  <div><span style={{ color: '#64748b' }}>Unit: </span>#{v.unitNumber || '—'}</div>
+                  <div><span style={{ color: '#64748b' }}>VIN: </span>{v.vin || '—'}</div>
+                  <div><span style={{ color: '#64748b' }}>Value: </span>{v.value > 0 ? fmt$(v.value) : '—'}</div>
+                  <div><span style={{ color: '#64748b' }}>GVW: </span>{v.gvw > 0 ? `${v.gvw.toLocaleString()} lbs` : '—'}</div>
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* POLICIES */}
+        {tab === 'policies' && (
+          <div>
+            <div className="flex flex-between" style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 13, color: '#64748b' }}>
+                {(freshLead.policies || []).length} polic{(freshLead.policies || []).length === 1 ? 'y' : 'ies'} on file
+              </div>
+              <button className="btn-p btn-sm" onClick={() => setPolicyModal({ open: true })}>+ Add Policy</button>
+            </div>
+
+            {(!freshLead.policies || freshLead.policies.length === 0) && (
+              <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>
+                No policies bound yet. Click <b>+ Add Policy</b> to record a binding with policy number, market, line, producer, premium, and effective dates.
+              </div>
+            )}
+
+            {(freshLead.policies || []).map(p => {
+              const market = markets.find(m => m.id === p.market);
+              const producer = producers.find(pr => pr.id === p.producer);
+              const statusColors: Record<Policy['status'], { bg: string; color: string }> = {
+                Active: { bg: '#f0fdfa', color: '#0f766e' },
+                Cancelled: { bg: '#fff1f2', color: '#9f1239' },
+                Expired: { bg: '#fafafa', color: '#525252' },
+                Pending: { bg: '#fefce8', color: '#854d0e' },
+              };
+              const sc = statusColors[p.status];
+              return (
+                <div key={p.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setPolicyModal({ open: true, policy: p })}>
+                  <div className="flex flex-between" style={{ marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1b2a4a' }}>{p.policyNumber}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{p.line}</div>
+                    </div>
+                    <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.color }}>{p.status}</span>
+                      <button className="btn-s btn-sm" onClick={e => { e.stopPropagation(); setPolicyModal({ open: true, policy: p }); }}>Edit</button>
+                      <button className="btn-s btn-sm btn-danger" onClick={e => { e.stopPropagation(); if (confirm(`Delete policy ${p.policyNumber}?`)) deletePolicy(freshLead.id, p.id); }}>×</button>
+                    </div>
+                  </div>
+                  <div className="grid grid-3" style={{ gap: 8, fontSize: 12 }}>
+                    <div><span style={{ color: '#64748b' }}>Market: </span><span style={{ fontWeight: 600 }}>{market?.name || p.marketName || '—'}</span></div>
+                    <div><span style={{ color: '#64748b' }}>Producer: </span><span style={{ fontWeight: 600 }}>{producer?.name || p.producer}</span></div>
+                    <div><span style={{ color: '#64748b' }}>Premium: </span><span style={{ fontWeight: 700, color: '#0f766e' }}>{p.premium > 0 ? fmt$(p.premium) : '—'}</span></div>
+                    <div><span style={{ color: '#64748b' }}>Effective: </span><span style={{ fontWeight: 600 }}>{p.effectiveDate || '—'}</span></div>
+                    <div><span style={{ color: '#64748b' }}>Expiration: </span><span style={{ fontWeight: 600 }}>{p.expirationDate || '—'}</span></div>
+                    <div><span style={{ color: '#64748b' }}>Bound: </span><span style={{ fontWeight: 600 }}>{p.bindDate || '—'}</span></div>
+                  </div>
+                  {p.notes && <div style={{ marginTop: 8, fontSize: 11, color: '#475569', padding: 8, background: '#f8fafc', borderRadius: 6 }}>{p.notes}</div>}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -758,9 +970,16 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
                   </div>
                 </div>
 
+                {/* CarrierBase / CAB-style composite score */}
+                {cabCarrier && (
+                  <div style={{ marginBottom: 14 }}>
+                    <CABScorePanel carrier={cabCarrier as Parameters<typeof CABScorePanel>[0]['carrier']} basics={cabBasics} />
+                  </div>
+                )}
+
                 <div className="panel">
                   <div className="flex flex-between" style={{ marginBottom: 12 }}>
-                    <div className="lbl" style={{ marginBottom: 0 }}>FMCSA BASICs Scores</div>
+                    <div className="lbl" style={{ marginBottom: 0 }}>FMCSA BASICs Detail</div>
                     <AlertBadge basics={freshLead.safer.basics} />
                   </div>
                   <BasicBars basics={freshLead.safer.basics} />
@@ -857,6 +1076,18 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
       {/* Compose/Reply/Forward modal */}
       {showCompose && (
         <ComposeModal lead={freshLead} opts={composeOpts || undefined} onClose={() => setShowCompose(false)} />
+      )}
+      {policyModal.open && (
+        <PolicyModal lead={freshLead} policy={policyModal.policy} onClose={() => setPolicyModal({ open: false })} />
+      )}
+      {driverModal.open && (
+        <DriverModal lead={freshLead} driver={driverModal.driver} idx={driverModal.idx} onClose={() => setDriverModal({ open: false })} />
+      )}
+      {vehicleModal.open && (
+        <VehicleModal lead={freshLead} vehicle={vehicleModal.vehicle} idx={vehicleModal.idx} onClose={() => setVehicleModal({ open: false })} />
+      )}
+      {mvrModal && (
+        <MVROrderModal lead={freshLead} onClose={() => setMvrModal(false)} />
       )}
     </div>
   );

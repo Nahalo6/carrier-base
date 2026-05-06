@@ -120,6 +120,35 @@ export interface Vehicle {
   gvw: number;
 }
 
+export interface Policy {
+  id: string;
+  policyNumber: string;
+  line: string;
+  market: string;          // market id or name
+  marketName?: string;
+  producer: string;        // producer id
+  premium: number;
+  effectiveDate: string;
+  expirationDate: string;
+  bindDate: string;
+  status: 'Active' | 'Cancelled' | 'Expired' | 'Pending';
+  notes?: string;
+}
+
+export interface MVROrder {
+  id: string;
+  driverIndex: number;     // index in lead.drivers
+  driverName: string;
+  orderedDate: string;
+  status: 'Pending' | 'Complete' | 'Failed';
+  cost: number;            // total charged to producer (vendor cost + carrierBase fee)
+  vendorCost: number;
+  serviceFee: number;
+  resultUrl?: string;
+  result?: string;
+  vendor: 'Samba Safety' | 'Manual';
+}
+
 export interface Lead {
   id: string;
   company: string;
@@ -146,9 +175,13 @@ export interface Lead {
   safer?: SaferData | null;
   created: string;
   boundDate?: string | null;
+  // legacy single-policy fields (kept for backward compat)
   policyNumber?: string;
   effectiveDate?: string;
   expirationDate?: string;
+  // new: multiple policies per account
+  policies?: Policy[];
+  mvrOrders?: MVROrder[];
   statusHistory?: StatusHistoryEntry[];
 }
 

@@ -1,9 +1,14 @@
-'use client';
-import { useState } from 'react';
+﻿'use client';
+import { useMemo, useState } from 'react';
 import { useCRMStore } from '@/lib/store';
-import { fmt$, daysSince, producerDotColor } from '@/lib/utils';
+import { fmt$, daysSince } from '@/lib/utils';
 import { STATUSES, STATUS_COLORS } from '@/lib/constants';
 import type { LeadStatus } from '@/lib/types';
+import USStateMap from '@/components/USStateMap';
+import {
+  BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 
 function KpiCard({ label, value, sub, accent, valColor }: { label: string; value: string | number; sub?: string; accent: string; valColor?: string }) {
   return (
@@ -16,259 +21,404 @@ function KpiCard({ label, value, sub, accent, valColor }: { label: string; value
   );
 }
 
-function DonutChart({ data }: { data: { label: string; value: number; color: string }[] }) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  if (total === 0) return <div style={{ color: '#94a3b8', fontSize: 12 }}>No data</div>;
-  let offset = 0;
-  const r = 44, cx = 50, cy = 50, circ = 2 * Math.PI * r;
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-      <svg width="100" height="100" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
-        {data.map((d, i) => {
-          const pct = d.value / total;
-          const dash = pct * circ;
-          const el = <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={d.color} strokeWidth="12"
-            strokeDasharray={`${dash} ${circ - dash}`} strokeDashoffset={-offset * circ / 1} />;
-          offset += pct;
-          return el;
-        })}
-      </svg>
-      <div>
-        {data.map((d, i) => (
-          <div key={i} className="flex" style={{ gap: 6, marginBottom: 4 }}>
-            <div style={{ width: 10, height: 10, borderRadius: 2, background: d.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: '#64748b' }}>{d.label}</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#1b2a4a', marginLeft: 'auto' }}>{d.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const ANALYTICS_VIEWS = ['overview', 'velocity', 'producers', 'markets', 'renewals'] as const;
+const ANALYTICS_VIEWS = ['overview', 'geographic', 'producers', 'velocity', 'markets', 'renewals'] as const;
 type AnalyticsView = typeof ANALYTICS_VIEWS[number];
+
+const COLORS = ['#2563eb', '#0f766e', '#b45309', '#9f1239', '#7c3aed', '#0891b2', '#854d0e', '#525252'];
 
 export default function AnalyticsPage() {
   const leads = useCRMStore(s => s.leads);
-  const markets = useCRMStore(s => s.markets);
   const producers = useCRMStore(s => s.producers);
+  const markets = useCRMStore(s => s.markets);
   const [view, setView] = useState<AnalyticsView>('overview');
 
-  const bound = leads.filter(l => l.status === 'Bound');
-  const totalP = bound.reduce((s, l) => s + (l.premium || 0), 0);
-  const convRate = leads.length > 0 ? Math.round((bound.length / leads.length) * 100) : 0;
-  const avgBind = bound.length > 0 ? Math.round(bound.reduce((s, l) => s + daysSince(l.created), 0) / bound.length) : 0;
-  const lost = leads.filter(l => l.status === 'Lost');
+  // â”€â”€â”€ KPIs â”€â”€
+  const kpis = useMemo(() => {
+    const bound = leads.filter(l => l.status === 'Bound');
+    const totalPolicies = leads.reduce((s, l) => s + (l.policies?.length || 0), 0);
+    const policyPremium = leads.reduce((s, l) => s + (l.policies?.reduce((ps, p) => ps + p.premium, 0) || 0), 0);
+    const boundPremium = bound.reduce((s, l) => s + l.premium, 0);
+    const allPremium = policyPremium > 0 ? policyPremium : boundPremium;
+    const inFlight = leads.filter(l => ['Quoting', 'Submitted'].includes(l.status));
+    const inFlightPremium = inFlight.reduce((s, l) => s + l.premium, 0);
+    const won = leads.filter(l => l.status === 'Bound').length;
+    const lost = leads.filter(l => l.status === 'Lost').length;
+    const winRate = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
+    return { total: leads.length, bound: bound.length, totalPolicies, policyPremium: allPremium,
+      inFlightPremium, winRate, inFlight: inFlight.length, lost };
+  }, [leads]);
 
-  const statusCounts = STATUSES.map(s => ({ label: s, value: leads.filter(l => l.status === s).length, color: STATUS_COLORS[s as LeadStatus].b }));
+  // â”€â”€â”€ Pipeline by status â”€â”€
+  const pipelineData = useMemo(() => STATUSES.map(s => ({
+    name: s,
+    count: leads.filter(l => l.status === s).length,
+    premium: leads.filter(l => l.status === s).reduce((sum, l) => sum + l.premium, 0),
+    color: STATUS_COLORS[s as LeadStatus]?.t || '#64748b',
+  })), [leads]);
 
-  // Velocity data
-  const stageMap: Record<string, number[]> = {};
-  leads.forEach(l => {
-    const days = daysSince(l.created);
-    if (!stageMap[l.status]) stageMap[l.status] = [];
-    stageMap[l.status].push(days);
-  });
-  const velocityData = Object.entries(stageMap).map(([status, days]) => ({
-    status, avgDays: Math.round(days.reduce((a, b) => a + b, 0) / days.length),
-  }));
+  // â”€â”€â”€ Geographic: leads / policies by state â”€â”€
+  const stateData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const policies: Record<string, number> = {};
+    const premiumByState: Record<string, number> = {};
+    leads.forEach(l => {
+      const st = (l.safer?.address?.match(/, ([A-Z]{2}),/)?.[1])
+        || (l.safer?.address?.match(/, ([A-Z]{2})\b/)?.[1])
+        || '';
+      if (st) {
+        counts[st] = (counts[st] || 0) + 1;
+        policies[st] = (policies[st] || 0) + (l.policies?.length || 0);
+        premiumByState[st] = (premiumByState[st] || 0) + l.premium;
+      }
+    });
+    return { counts, policies, premiumByState };
+  }, [leads]);
 
-  // Producer performance
-  const prodPerf = producers.map(p => {
+  // â”€â”€â”€ Producer leaderboard â”€â”€
+  const producerStats = useMemo(() => producers.map(p => {
     const myLeads = leads.filter(l => l.producer === p.id);
-    const myBound = myLeads.filter(l => l.status === 'Bound');
-    const prem = myBound.reduce((s, l) => s + (l.premium || 0), 0);
-    return { ...p, leads: myLeads.length, bound: myBound.length, premium: prem, conv: myLeads.length > 0 ? Math.round((myBound.length / myLeads.length) * 100) : 0 };
-  });
+    const bound = myLeads.filter(l => l.status === 'Bound');
+    const policies = myLeads.reduce((s, l) => s + (l.policies?.length || 0), 0);
+    const premium = myLeads.reduce((s, l) => s + (l.policies?.reduce((ps, pol) => ps + pol.premium, 0) || l.premium), 0);
+    return { id: p.id, name: p.name, leads: myLeads.length, bound: bound.length,
+      winRate: myLeads.length > 0 ? Math.round((bound.length / myLeads.length) * 100) : 0,
+      policies, premium };
+  }).sort((a, b) => b.premium - a.premium), [leads, producers]);
 
-  // Market performance
-  const mktPerf = markets.map(m => {
-    const subs = leads.filter(l => l.markets.some(lm => lm.mid === m.id));
-    const mBound = subs.filter(l => l.markets.find(lm => lm.mid === m.id)?.status === 'Bound');
-    const mDeclined = subs.filter(l => l.markets.find(lm => lm.mid === m.id)?.status === 'Declined');
-    const prem = mBound.reduce((s, l) => s + (l.premium || 0), 0);
-    return { ...m, subs: subs.length, bound: mBound.length, declined: mDeclined.length, premium: prem, hitRate: subs.length > 0 ? Math.round((mBound.length / subs.length) * 100) : 0 };
-  }).sort((a, b) => b.premium - a.premium);
+  const topProducerStateMap = useMemo(() => {
+    // For each state, find the producer with the most leads
+    const stateProducers: Record<string, Record<string, number>> = {};
+    leads.forEach(l => {
+      const st = (l.safer?.address?.match(/, ([A-Z]{2}),/)?.[1])
+        || (l.safer?.address?.match(/, ([A-Z]{2})\b/)?.[1])
+        || '';
+      if (st) {
+        if (!stateProducers[st]) stateProducers[st] = {};
+        stateProducers[st][l.producer] = (stateProducers[st][l.producer] || 0) + 1;
+      }
+    });
+    const result: Record<string, number> = {};
+    Object.entries(stateProducers).forEach(([st, prods]) => {
+      const top = Object.values(prods).sort((a, b) => b - a)[0] || 0;
+      result[st] = top;
+    });
+    return result;
+  }, [leads]);
 
-  // Renewals
-  const today = new Date();
-  const renewalBuckets: Record<string, { count: number; premium: number }> = {
-    expired: { count: 0, premium: 0 }, '0-30': { count: 0, premium: 0 },
-    '31-60': { count: 0, premium: 0 }, '61-90': { count: 0, premium: 0 },
-    '91-180': { count: 0, premium: 0 }, '181+': { count: 0, premium: 0 },
-  };
-  bound.forEach(l => {
-    if (!l.expirationDate) return;
-    const days = Math.ceil((new Date(l.expirationDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const bucket = days < 0 ? 'expired' : days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : days <= 180 ? '91-180' : '181+';
-    renewalBuckets[bucket].count++;
-    renewalBuckets[bucket].premium += l.premium || 0;
-  });
+  // â”€â”€â”€ Monthly velocity (last 12 months) â”€â”€
+  const monthlyData = useMemo(() => {
+    const months: { month: string; created: number; bound: number; premium: number }[] = [];
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      const created = leads.filter(l => l.created?.startsWith(monthKey)).length;
+      const bound = leads.filter(l => l.boundDate?.startsWith(monthKey)).length;
+      const premium = leads.filter(l => l.boundDate?.startsWith(monthKey)).reduce((s, l) => s + l.premium, 0);
+      months.push({ month: monthLabel, created, bound, premium });
+    }
+    return months;
+  }, [leads]);
+
+  // â”€â”€â”€ Lines of coverage â”€â”€
+  const linesData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    leads.forEach(l => {
+      l.policies?.forEach(p => { counts[p.line] = (counts[p.line] || 0) + 1; });
+      // Fallback to lead.lines if no policies
+      if (!l.policies?.length) l.lines.forEach(line => { counts[line] = (counts[line] || 0) + 0.5; });
+    });
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value: Math.round(value) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+  }, [leads]);
+
+  // â”€â”€â”€ Market performance â”€â”€
+  const marketData = useMemo(() => {
+    const counts: Record<string, { mid: string; name: string; submitted: number; bound: number; premium: number }> = {};
+    leads.forEach(l => {
+      l.markets.forEach(m => {
+        const market = markets.find(mk => mk.id === m.mid);
+        if (!market) return;
+        if (!counts[m.mid]) counts[m.mid] = { mid: m.mid, name: market.name, submitted: 0, bound: 0, premium: 0 };
+        counts[m.mid].submitted++;
+        if (m.status === 'Bound') {
+          counts[m.mid].bound++;
+          counts[m.mid].premium += l.premium;
+        }
+      });
+    });
+    return Object.values(counts).sort((a, b) => b.bound - a.bound);
+  }, [leads, markets]);
+
+  // â”€â”€â”€ Upcoming renewals â”€â”€
+  const renewals = useMemo(() => {
+    const now = new Date();
+    const list: { lead: typeof leads[number]; policyNumber: string; daysUntil: number; expDate: string; premium: number }[] = [];
+    leads.forEach(l => {
+      l.policies?.forEach(p => {
+        if (!p.expirationDate) return;
+        const exp = new Date(p.expirationDate);
+        const days = Math.ceil((exp.getTime() - now.getTime()) / 86400000);
+        if (days <= 120 && days > -30) {
+          list.push({ lead: l, policyNumber: p.policyNumber, daysUntil: days, expDate: p.expirationDate, premium: p.premium });
+        }
+      });
+    });
+    return list.sort((a, b) => a.daysUntil - b.daysUntil);
+  }, [leads]);
 
   return (
     <>
       <div className="app-header">
         <h1>Analytics</h1>
-        <div className="header-actions">
-          <button className="btn-s btn-sm" onClick={() => {
-            const csv = ['Company,Status,Premium,Producer,Created'].concat(leads.map(l => `"${l.company}",${l.status},${l.premium},${l.producer},${l.created}`)).join('\n');
-            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv])); a.download = 'crm_export.csv'; a.click();
-          }}>Export CSV</button>
-        </div>
+        <div style={{ fontSize: 13, color: '#64748b' }}>Pipeline performance, geographic distribution, and producer metrics</div>
       </div>
       <div className="content">
-        {/* Sub-nav */}
-        <div className="lead-tabs" style={{ marginBottom: 20 }}>
-          {[['overview', 'Overview'], ['velocity', 'Pipeline Velocity'], ['producers', 'Producers'], ['markets', 'Markets'], ['renewals', 'Renewals']].map(([k, l]) => (
-            <button key={k} className={`lead-tab ${view === k ? 'active' : ''}`} onClick={() => setView(k as AnalyticsView)}>{l}</button>
+        {/* View tabs */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 18, flexWrap: 'wrap', borderBottom: '1px solid #e2e8f0' }}>
+          {ANALYTICS_VIEWS.map(v => (
+            <button key={v} onClick={() => setView(v)}
+              style={{
+                padding: '10px 16px', fontSize: 13, fontWeight: 600, textTransform: 'capitalize',
+                background: 'none', border: 'none', cursor: 'pointer',
+                borderBottom: `2px solid ${view === v ? '#2563eb' : 'transparent'}`,
+                color: view === v ? '#2563eb' : '#64748b', marginBottom: -1,
+              }}>
+              {v}
+            </button>
           ))}
         </div>
 
         {/* OVERVIEW */}
         {view === 'overview' && (
-          <div>
-            <div className="grid grid-4" style={{ gap: 16, marginBottom: 20 }}>
-              <KpiCard label="Total Premium" value={fmt$(totalP)} sub={`${bound.length} bound policies`} accent="linear-gradient(90deg,#0f766e,#5eead4)" valColor="#0f766e" />
-              <KpiCard label="Conversion Rate" value={`${convRate}%`} sub={`${bound.length} of ${leads.length} leads`} accent="linear-gradient(90deg,#2563eb,#60a5fa)" valColor="#2563eb" />
-              <KpiCard label="Avg Days to Bind" value={`${avgBind}d`} sub="from lead to bound" accent="linear-gradient(90deg,#5b21b6,#8b5cf6)" valColor="#5b21b6" />
-              <KpiCard label="Lost / Declined" value={lost.length} sub={`${leads.length > 0 ? Math.round((lost.length / leads.length) * 100) : 0}% decline rate`} accent="linear-gradient(90deg,#9f1239,#fda4af)" valColor="#9f1239" />
+          <>
+            <div className="grid grid-4" style={{ gap: 14, marginBottom: 18 }}>
+              <KpiCard label="Total Leads" value={kpis.total} sub={`${kpis.inFlight} in flight`} accent="#2563eb" />
+              <KpiCard label="Bound Accounts" value={kpis.bound} sub={`${kpis.totalPolicies} active policies`} accent="#0f766e" valColor="#0f766e" />
+              <KpiCard label="Bound Premium" value={fmt$(kpis.policyPremium)} sub={`${fmt$(kpis.inFlightPremium)} in flight`} accent="#b45309" />
+              <KpiCard label="Win Rate" value={`${kpis.winRate}%`} sub={`${kpis.lost} lost`} accent="#7c3aed" />
             </div>
-            <div className="grid grid-2" style={{ gap: 20 }}>
-              <div className="report-card">
-                <div style={{ fontWeight: 600, fontSize: 14, color: '#1b2a4a', marginBottom: 14 }}>Pipeline by Status</div>
-                <DonutChart data={statusCounts.filter(d => d.value > 0)} />
+
+            <div className="grid grid-2" style={{ gap: 14, marginBottom: 18 }}>
+              <div className="panel">
+                <div className="lbl" style={{ marginBottom: 12 }}>Pipeline by Status (count)</div>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={pipelineData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                      {pipelineData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-              <div className="report-card">
-                <div style={{ fontWeight: 600, fontSize: 14, color: '#1b2a4a', marginBottom: 14 }}>Premium by Producer</div>
-                {prodPerf.map(p => (
-                  <div key={p.id} style={{ marginBottom: 10 }}>
-                    <div className="flex flex-between" style={{ marginBottom: 3 }}>
-                      <span style={{ fontSize: 12, color: '#1b2a4a', fontWeight: 500 }}>{p.name}</span>
-                      <span style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>{fmt$(p.premium)}</span>
-                    </div>
-                    <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
-                      <div style={{ width: `${totalP > 0 ? Math.round((p.premium / totalP) * 100) : 0}%`, height: '100%', background: producerDotColor(p.id), borderRadius: 4 }} />
-                    </div>
-                  </div>
-                ))}
+              <div className="panel">
+                <div className="lbl" style={{ marginBottom: 12 }}>Pipeline Premium ($)</div>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={pipelineData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(v) => fmt$(Number(v))} />
+                    <Bar dataKey="premium" radius={[8, 8, 0, 0]} fill="#0f766e" />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
-          </div>
+
+            <div className="grid grid-2" style={{ gap: 14, marginBottom: 18 }}>
+              <div className="panel">
+                <div className="lbl" style={{ marginBottom: 12 }}>Lines of Coverage</div>
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={linesData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={(e) => `${e.name}: ${e.value}`}>
+                      {linesData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="panel">
+                <div className="lbl" style={{ marginBottom: 12 }}>Coverage Lines (count)</div>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={linesData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={130} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="#2563eb" radius={[0, 8, 8, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </>
         )}
 
-        {/* VELOCITY */}
-        {view === 'velocity' && (
-          <div className="report-card">
-            <div style={{ fontWeight: 600, fontSize: 14, color: '#1b2a4a', marginBottom: 16 }}>Average Days in Each Stage</div>
-            <table>
-              <thead><tr><th>Status</th><th>Avg Days</th><th>Lead Count</th><th>Trend</th></tr></thead>
-              <tbody>
-                {velocityData.map(r => (
-                  <tr key={r.status}>
-                    <td><span className="badge" style={{ background: STATUS_COLORS[r.status as LeadStatus]?.bg || '#f1f5f9', border: `1px solid ${STATUS_COLORS[r.status as LeadStatus]?.b || '#e2e8f0'}`, color: STATUS_COLORS[r.status as LeadStatus]?.t || '#64748b' }}>{r.status}</span></td>
-                    <td style={{ fontWeight: 700 }}>{r.avgDays}d</td>
-                    <td>{stageMap[r.status]?.length || 0}</td>
-                    <td>
-                      <div style={{ height: 8, width: 120, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
-                        <div style={{ width: `${Math.min(r.avgDays / 30 * 100, 100)}%`, height: '100%', background: r.avgDays > 14 ? '#9f1239' : r.avgDays > 7 ? '#92400e' : '#0f766e', borderRadius: 4 }} />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {/* GEOGRAPHIC */}
+        {view === 'geographic' && (
+          <>
+            <div className="grid grid-2" style={{ gap: 14, marginBottom: 18 }}>
+              <div className="panel">
+                <div className="lbl" style={{ marginBottom: 12 }}>Accounts by State</div>
+                <USStateMap data={stateData.counts} metricLabel="accounts" colorScale={['#dbeafe', '#1e3a8a']} />
+              </div>
+              <div className="panel">
+                <div className="lbl" style={{ marginBottom: 12 }}>Bound Policies by State</div>
+                <USStateMap data={stateData.policies} metricLabel="policies" colorScale={['#ccfbf1', '#134e4a']} />
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="lbl" style={{ marginBottom: 12 }}>Top Producer Lead Count by State</div>
+              <USStateMap data={topProducerStateMap} metricLabel="top-producer leads" colorScale={['#fef3c7', '#7c2d12']} />
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+                Each cell shows the lead count of the highest-performing producer in that state.
+              </div>
+            </div>
+          </>
         )}
 
         {/* PRODUCERS */}
         {view === 'producers' && (
-          <div>
-            <table style={{ marginBottom: 20 }}>
-              <thead><tr><th>Producer</th><th>Leads</th><th>Bound</th><th>Conv %</th><th>Premium</th><th>Revenue (15%)</th></tr></thead>
-              <tbody>
-                {prodPerf.map(p => (
-                  <tr key={p.id}>
-                    <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 28, height: 28, borderRadius: '50%', background: producerDotColor(p.id), display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700 }}>{p.name.charAt(0)}</div>{p.name}</div></td>
-                    <td>{p.leads}</td>
-                    <td style={{ color: '#0f766e', fontWeight: 700 }}>{p.bound}</td>
-                    <td>{p.conv}%</td>
-                    <td style={{ color: '#0f766e', fontWeight: 700 }}>{fmt$(p.premium)}</td>
-                    <td>{fmt$(Math.round(p.premium * 0.15))}</td>
+          <>
+            <div className="panel" style={{ marginBottom: 18 }}>
+              <div className="lbl" style={{ marginBottom: 12 }}>Producer Premium Leaderboard</div>
+              <ResponsiveContainer width="100%" height={Math.max(220, producerStats.length * 38)}>
+                <BarChart data={producerStats} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
+                  <Tooltip formatter={(v) => fmt$(Number(v))} />
+                  <Bar dataKey="premium" fill="#0f766e" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="panel">
+              <div className="lbl" style={{ marginBottom: 12 }}>Producer Detail</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
+                    <th style={{ padding: 8 }}>Producer</th>
+                    <th style={{ padding: 8 }}>Leads</th>
+                    <th style={{ padding: 8 }}>Bound</th>
+                    <th style={{ padding: 8 }}>Win %</th>
+                    <th style={{ padding: 8 }}>Policies</th>
+                    <th style={{ padding: 8, textAlign: 'right' }}>Premium</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {producerStats.map(ps => (
+                    <tr key={ps.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: 8, fontWeight: 600 }}>{ps.name}</td>
+                      <td style={{ padding: 8 }}>{ps.leads}</td>
+                      <td style={{ padding: 8 }}>{ps.bound}</td>
+                      <td style={{ padding: 8, color: ps.winRate >= 30 ? '#0f766e' : '#475569', fontWeight: 600 }}>{ps.winRate}%</td>
+                      <td style={{ padding: 8 }}>{ps.policies}</td>
+                      <td style={{ padding: 8, textAlign: 'right', fontWeight: 700, color: '#0f766e' }}>{fmt$(ps.premium)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* VELOCITY */}
+        {view === 'velocity' && (
+          <>
+            <div className="panel" style={{ marginBottom: 18 }}>
+              <div className="lbl" style={{ marginBottom: 12 }}>Leads & Bindings (12 months)</div>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={monthlyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="created" name="New Leads" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="bound" name="Bound" stroke="#0f766e" strokeWidth={2} dot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="panel">
+              <div className="lbl" style={{ marginBottom: 12 }}>Premium Bound (12 months)</div>
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={monthlyData}>
+                  <defs>
+                    <linearGradient id="premiumGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0f766e" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="#0f766e" stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                  <Tooltip formatter={(v) => fmt$(Number(v))} />
+                  <Area type="monotone" dataKey="premium" stroke="#0f766e" strokeWidth={2} fill="url(#premiumGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </>
         )}
 
         {/* MARKETS */}
         {view === 'markets' && (
-          <div className="report-card">
-            <div style={{ fontWeight: 600, fontSize: 14, color: '#1b2a4a', marginBottom: 16 }}>Market Performance</div>
-            <table>
-              <thead><tr><th>Market</th><th>Submissions</th><th>Bound</th><th>Declined</th><th>Hit Rate</th><th>Premium</th></tr></thead>
-              <tbody>
-                {mktPerf.map(m => (
-                  <tr key={m.id}>
-                    <td style={{ fontWeight: 600 }}>{m.name}</td>
-                    <td>{m.subs}</td>
-                    <td style={{ color: '#0f766e', fontWeight: 700 }}>{m.bound}</td>
-                    <td style={{ color: '#9f1239' }}>{m.declined}</td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 60, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
-                          <div style={{ width: `${m.hitRate}%`, height: '100%', background: m.hitRate >= 50 ? '#0f766e' : m.hitRate >= 25 ? '#b45309' : '#9f1239', borderRadius: 3 }} />
-                        </div>
-                        <span style={{ fontWeight: 700, color: '#1b2a4a' }}>{m.hitRate}%</span>
-                      </div>
-                    </td>
-                    <td style={{ color: '#0f766e', fontWeight: 700 }}>{fmt$(m.premium)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="panel">
+            <div className="lbl" style={{ marginBottom: 12 }}>Market Performance</div>
+            <ResponsiveContainer width="100%" height={Math.max(260, marketData.length * 42)}>
+              <BarChart data={marketData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={150} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="submitted" name="Submitted" fill="#94a3b8" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="bound" name="Bound" fill="#0f766e" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            {marketData.length === 0 && <div style={{ color: '#94a3b8', textAlign: 'center', padding: 30 }}>No market submission data yet.</div>}
           </div>
         )}
 
         {/* RENEWALS */}
         {view === 'renewals' && (
-          <div>
-            <div className="grid grid-3" style={{ gap: 16, marginBottom: 20 }}>
-              {Object.entries(renewalBuckets).map(([k, v]) => {
-                const colors: Record<string, string> = { expired: '#9f1239', '0-30': '#be123c', '31-60': '#92400e', '61-90': '#b45309', '91-180': '#1e40af', '181+': '#0f766e' };
-                return (
-                  <div key={k} className="dash-card" style={{ cursor: 'default' }}>
-                    <div className="accent" style={{ background: colors[k] }} />
-                    <div className="label">{k === 'expired' ? 'Expired' : `${k} days`}</div>
-                    <div className="number" style={{ color: colors[k], fontSize: 28 }}>{v.count}</div>
-                    <div className="sub">{fmt$(v.premium)} at risk</div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="report-card">
-              <div style={{ fontWeight: 600, fontSize: 14, color: '#1b2a4a', marginBottom: 16 }}>Bound Accounts by Expiration</div>
-              <table>
-                <thead><tr><th>Company</th><th>Policy #</th><th>Effective</th><th>Expires</th><th>Premium</th><th>Days Left</th></tr></thead>
+          <div className="panel">
+            <div className="lbl" style={{ marginBottom: 12 }}>Upcoming Renewals (next 120 days)</div>
+            {renewals.length === 0 ? (
+              <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 30 }}>No policies expiring in the next 120 days.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
+                    <th style={{ padding: 8 }}>Account</th>
+                    <th style={{ padding: 8 }}>Policy #</th>
+                    <th style={{ padding: 8 }}>Expires</th>
+                    <th style={{ padding: 8 }}>Days</th>
+                    <th style={{ padding: 8, textAlign: 'right' }}>Premium</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {bound.filter(l => l.expirationDate).sort((a, b) => (a.expirationDate || '').localeCompare(b.expirationDate || '')).map(l => {
-                    const days = Math.ceil((new Date(l.expirationDate!).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                    const col = days < 0 ? '#9f1239' : days <= 30 ? '#be123c' : days <= 60 ? '#92400e' : '#0f766e';
-                    return (
-                      <tr key={l.id}>
-                        <td style={{ fontWeight: 600 }}>{l.company}</td>
-                        <td style={{ color: '#2563eb' }}>{l.policyNumber || '—'}</td>
-                        <td>{l.effectiveDate || '—'}</td>
-                        <td>{l.expirationDate}</td>
-                        <td style={{ color: '#0f766e', fontWeight: 700 }}>{fmt$(l.premium)}</td>
-                        <td><span style={{ fontWeight: 700, color: col }}>{days < 0 ? `${Math.abs(days)}d ago` : `${days}d`}</span></td>
-                      </tr>
-                    );
-                  })}
+                  {renewals.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: 8, fontWeight: 600 }}>{r.lead.company}</td>
+                      <td style={{ padding: 8, color: '#2563eb', fontWeight: 600 }}>{r.policyNumber}</td>
+                      <td style={{ padding: 8 }}>{r.expDate}</td>
+                      <td style={{ padding: 8, color: r.daysUntil < 30 ? '#9f1239' : r.daysUntil < 60 ? '#b45309' : '#0f766e', fontWeight: 700 }}>
+                        {r.daysUntil < 0 ? `${-r.daysUntil} overdue` : `${r.daysUntil}d`}
+                      </td>
+                      <td style={{ padding: 8, textAlign: 'right', fontWeight: 700 }}>{fmt$(r.premium)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-            </div>
+            )}
           </div>
         )}
       </div>

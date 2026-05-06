@@ -6,8 +6,10 @@ import { US_STATES } from '@/lib/constants';
 import {
   fmcsaLookupDOT, fmcsaSearchName, fmcsaBrowseAll, fmcsaBrowseState, fmcsaNewVentures, fmcsaGetBasics,
   safetyRatingColor, operatingStatusColor, toSaferData,
-  type FMCSACarrier, type FMCSABasicsResult, type BasicDetail,
+  type FMCSACarrier, type FMCSABasicsResult,
 } from '@/lib/fmcsa';
+import { computeCABScore, gradeColor } from '@/lib/cab';
+import CABScorePanel from '@/components/CABScorePanel';
 
 // ─── Clean inline icons (no emojis) ───────────────────────────────────────────
 const IconSearch = ({ size = 14 }: { size?: number }) => (
@@ -36,69 +38,19 @@ const IconPlus = ({ size = 13 }: { size?: number }) => (
   </svg>
 );
 
-const BASIC_LABELS: { key: string; label: string }[] = [
-  { key: 'unsafeDriving',        label: 'Unsafe Driving' },
-  { key: 'hoursOfService',       label: 'HOS Compliance' },
-  { key: 'vehicleMaintenance',   label: 'Vehicle Maintenance' },
-  { key: 'crashIndicator',       label: 'Crash Indicator' },
-  { key: 'driverFitness',        label: 'Driver Fitness' },
-  { key: 'controlledSubstances', label: 'Drugs & Alcohol' },
-  { key: 'hmCompliance',         label: 'HM Compliance' },
-];
-
-// ─── BASICs row — measure + violations + alert
-function BasicRow({ label, d }: { label: string; d: BasicDetail | undefined }) {
-  if (!d || !d.hasData) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 11, borderBottom: '1px solid #f8fafc' }}>
-        <div style={{ width: 130, color: '#475569', fontWeight: 600 }}>{label}</div>
-        <div style={{ flex: 1, color: '#94a3b8', fontStyle: 'italic' }}>No data</div>
-      </div>
-    );
-  }
-  const measureText = d.measure != null ? d.measure.toFixed(2) : '—';
-  const measurePct = d.measure != null && d.threshold != null
-    ? Math.min(100, (d.measure / d.threshold) * 100) : 0;
-  const fillColor = d.alert ? '#9f1239' : measurePct > 70 ? '#b45309' : measurePct > 40 ? '#0369a1' : '#0f766e';
-
+function BasicScoreMini({ carrier, basics }: { carrier: FMCSACarrier; basics: FMCSABasicsResult }) {
+  const score = computeCABScore(carrier, basics);
+  const colors = gradeColor(score.letterGrade);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 11, borderBottom: '1px solid #f8fafc' }}>
-      <div style={{ width: 130, color: '#475569', fontWeight: 600 }}>{label}</div>
-      <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
-        <div style={{ width: `${measurePct}%`, height: '100%', background: fillColor, borderRadius: 3 }} />
-      </div>
-      <div style={{ width: 70, fontSize: 10, color: '#475569', textAlign: 'right' }} title="Measure / Threshold">
-        {measureText}{d.threshold != null ? ` / ${d.threshold}` : ''}
-      </div>
-      <div style={{ width: 70, fontSize: 10, color: d.totalViolations > 0 ? '#92400e' : '#64748b', textAlign: 'right' }}>
-        {d.totalViolations} viol
-      </div>
-      <div style={{ width: 84, textAlign: 'right' }}>
-        {d.alert ? (
-          <span style={{ fontSize: 9, fontWeight: 800, color: '#fff', background: '#9f1239', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.04em' }}>ALERT</span>
-        ) : d.percentile != null ? (
-          <span style={{ fontSize: 11, fontWeight: 700, color: fillColor }}>{d.percentile}%</span>
-        ) : d.notPublic ? (
-          <span style={{ fontSize: 9, color: '#94a3b8', fontStyle: 'italic' }}>Restricted</span>
-        ) : (
-          <span style={{ fontSize: 9, color: '#0f766e', fontWeight: 600 }}>Pass</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function BasicScoreMini({ basics }: { basics: FMCSABasicsResult }) {
-  if (!basics.hasAnyData) return (
-    <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, display: 'inline-block' }}>BASICs: no public data</span>
-  );
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
-      {basics.alerts.length > 0
-        ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100, background: '#fff1f2', color: '#9f1239', border: '1px solid #fda4af' }}>{basics.alerts.length} BASICs Alert{basics.alerts.length > 1 ? 's' : ''}</span>
-        : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100, background: '#f0fdfa', color: '#0f766e', border: '1px solid #5eead4' }}>No BASICs Alerts</span>
-      }
-      <span style={{ fontSize: 10, color: '#475569' }}>{basics.totalViolations} total violations</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+      <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: colors.bg, color: colors.color, border: `1px solid ${colors.border}` }}>
+        Grade {score.letterGrade} · {score.overall}/100
+      </span>
+      <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 100, background: colors.bg, color: colors.color }}>
+        {score.riskTier}
+      </span>
+      {score.alerts > 0 && <span style={{ fontSize: 10, color: '#9f1239', fontWeight: 600 }}>{score.alerts} BASIC alert{score.alerts > 1 ? 's' : ''}</span>}
+      <span style={{ fontSize: 10, color: '#475569' }}>{score.totalViolations} viols · {score.totalCrashes} crash{score.totalCrashes !== 1 ? 'es' : ''}</span>
     </div>
   );
 }
@@ -165,7 +117,7 @@ function CarrierCard({
               {carrier.opType && <span style={{ fontSize: 10, color: '#64748b' }}>· {carrier.opType}</span>}
             </div>
             <InspectionCrashRow carrier={carrier} />
-            {basics && !expanded && <BasicScoreMini basics={basics} />}
+            {basics && !expanded && <BasicScoreMini carrier={carrier} basics={basics} />}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
             {alreadyAdded
@@ -240,39 +192,19 @@ function CarrierCard({
             </div>
           )}
 
-          <div style={{ background: basics?.alerts.length ? '#fff8f8' : basics?.hasAnyData ? '#f0fdfa' : '#f8fafc', borderRadius: 10, padding: 14, border: `1px solid ${basics?.alerts.length ? '#fda4af' : basics?.hasAnyData ? '#5eead4' : '#e2e8f0'}`, marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#1b2a4a' }}>FMCSA SMS BASICs</div>
-              {!basics && !basicsLoading && <button className="btn-s btn-sm" onClick={onLoadBasics} style={{ fontSize: 10 }}>Load BASICs</button>}
-              {basicsLoading && <span style={{ fontSize: 11, color: '#64748b' }}>Loading…</span>}
-              {basics && basics.alerts.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: '#9f1239' }}>{basics.alerts.length} Alert{basics.alerts.length > 1 ? 's' : ''}: {basics.alerts.join(', ')}</span>}
-              {basics && basics.alerts.length === 0 && basics.hasAnyData && <span style={{ fontSize: 10, fontWeight: 700, color: '#0f766e' }}>No Active Alerts · {basics.totalViolations} total violations</span>}
-              {basics && !basics.hasAnyData && <span style={{ fontSize: 10, color: '#94a3b8' }}>No public BASICs data</span>}
-            </div>
-            {basics?.hasAnyData ? (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0', fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #e2e8f0' }}>
-                  <div style={{ width: 130 }}>Category</div>
-                  <div style={{ flex: 1 }}>Severity</div>
-                  <div style={{ width: 70, textAlign: 'right' }}>Measure</div>
-                  <div style={{ width: 70, textAlign: 'right' }}>Violations</div>
-                  <div style={{ width: 84, textAlign: 'right' }}>Status</div>
-                </div>
-                {BASIC_LABELS.map(b => (
-                  <BasicRow key={b.key} label={b.label} d={basics.details[b.key]} />
-                ))}
-                <div style={{ marginTop: 8, fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>
-                  Note: SMS percentile rankings are restricted to authenticated portal users. The measure values, violation counts, and alert flags above are public.
-                </div>
-              </>
-            ) : !basicsLoading && basics ? (
-              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '12px 0' }}>
-                FMCSA returned no BASICs records for this carrier.
-                <br /><span style={{ fontSize: 10 }}>Common for very small carriers without enough inspections to be evaluated.</span>
+          <div style={{ marginBottom: 14 }}>
+            {basicsLoading ? (
+              <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 10, padding: 24, textAlign: 'center', fontSize: 12, color: '#64748b' }}>
+                Loading FMCSA BASICs data…
               </div>
-            ) : !basics ? (
-              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Click &ldquo;Load BASICs&rdquo; to pull live SMS data</div>
-            ) : null}
+            ) : (
+              <CABScorePanel carrier={carrier} basics={basics} />
+            )}
+            {!basics && !basicsLoading && (
+              <div style={{ marginTop: 8, textAlign: 'right' }}>
+                <button className="btn-s btn-sm" onClick={onLoadBasics} style={{ fontSize: 10 }}>Refresh BASICs from FMCSA</button>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
