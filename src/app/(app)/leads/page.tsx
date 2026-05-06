@@ -5,6 +5,7 @@ import { STATUSES, STATUS_COLORS, BASIC_CATS, DOC_TAG_COLORS, EMAIL_TAG_COLORS, 
 import { fmt$, unreadCount, getAlerts, basicBarColor, daysSince, stageBadgeColor, producerDotColor, todayISO, runPreUW } from '@/lib/utils';
 import type { PreUWResult } from '@/lib/utils';
 import type { Lead, LeadStatus, Email } from '@/lib/types';
+import { fmcsaLookupDOT, fmcsaGetBasics, toSaferData } from '@/lib/fmcsa';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ProducerDot from '@/components/ui/ProducerDot';
 import Modal from '@/components/ui/Modal';
@@ -361,8 +362,11 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
   const [tab, setTab] = useState('overview');
   const [composeOpts, setComposeOpts] = useState<{ to?: string; toName?: string; subj?: string; body?: string } | null>(null);
   const [showCompose, setShowCompose] = useState(false);
+  const [saferLoading, setSaferLoading] = useState(false);
+  const [saferError, setSaferError] = useState<string | null>(null);
   const markets = useCRMStore(s => s.markets);
   const setLeadStatus = useCRMStore(s => s.setLeadStatus);
+  const updateLead = useCRMStore(s => s.updateLead);
   const deleteEmail = useCRMStore(s => s.deleteEmail);
   const updateEmailTag = useCRMStore(s => s.updateEmailTag);
   const updateMarketStatus = useCRMStore(s => s.updateMarketStatus);
@@ -372,6 +376,26 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
   const leads = useCRMStore(s => s.leads);
   // Get fresh lead from store
   const freshLead = leads.find(l => l.id === lead.id) || lead;
+
+  const pullFMCSAData = async () => {
+    const dot = freshLead.dot?.trim();
+    if (!dot) { setSaferError('No DOT number on this lead.'); return; }
+    setSaferLoading(true);
+    setSaferError(null);
+    try {
+      const [carrier, basics] = await Promise.all([
+        fmcsaLookupDOT(dot),
+        fmcsaGetBasics(dot),
+      ]);
+      if (!carrier) { setSaferError('No FMCSA data found for DOT# ' + dot); return; }
+      const safer = toSaferData(carrier, basics, new Date().toISOString());
+      updateLead(freshLead.id, { safer });
+    } catch {
+      setSaferError('Failed to fetch FMCSA data. Please try again.');
+    } finally {
+      setSaferLoading(false);
+    }
+  };
 
   const emailUnread = unreadCount(freshLead);
   const preuwResults = runPreUW(freshLead, markets);
@@ -635,36 +659,102 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
         {/* SAFER */}
         {tab === 'safer' && (
           <div>
+            {/* Pull / Refresh bar */}
+            <div className="panel" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1b2a4a', marginBottom: 2 }}>
+                  Live FMCSA Lookup
+                </div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>
+                  DOT# {freshLead.dot || '—'}
+                  {(freshLead.safer as any)?.fetchedAt && (
+                    <span style={{ marginLeft: 8, color: '#94a3b8' }}>
+                      · Last pulled {new Date((freshLead.safer as any).fetchedAt).toLocaleDateString()} {new Date((freshLead.safer as any).fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {saferError && (
+                <div style={{ fontSize: 11, color: '#9f1239', background: '#fff1f2', border: '1px solid #fda4af', borderRadius: 6, padding: '4px 10px' }}>
+                  {saferError}
+                </div>
+              )}
+              <button
+                className="btn-p btn-sm"
+                onClick={pullFMCSAData}
+                disabled={saferLoading || !freshLead.dot}
+                style={{ minWidth: 140, opacity: (!freshLead.dot || saferLoading) ? 0.6 : 1, cursor: (!freshLead.dot || saferLoading) ? 'not-allowed' : 'pointer' }}
+              >
+                {saferLoading ? '⏳ Fetching…' : freshLead.safer ? '🔄 Refresh FMCSA Data' : '⬇ Pull FMCSA Data'}
+              </button>
+            </div>
+
             {!freshLead.safer ? (
-              <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No SAFER data linked.</div>
+              <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 32 }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>📡</div>
+                <div style={{ fontWeight: 600, color: '#1b2a4a', marginBottom: 4 }}>No FMCSA data yet</div>
+                <div>Click &ldquo;Pull FMCSA Data&rdquo; above to fetch live data for DOT# {freshLead.dot || '(no DOT set)'}.</div>
+              </div>
             ) : (
               <>
+                {/* Carrier header */}
+                <div className="panel" style={{ marginBottom: 14, background: '#f8fafc' }}>
+                  <div className="grid grid-3" style={{ gap: 8 }}>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Legal Name</span><div style={{ fontWeight: 700, fontSize: 13, color: '#1b2a4a' }}>{freshLead.safer.legalName}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>DOT #</span><div style={{ fontWeight: 600 }}>{freshLead.safer.dotNumber}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>MC #</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcNumber || '—'}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Address</span><div style={{ fontWeight: 600 }}>{freshLead.safer.address || '—'}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Phone</span><div style={{ fontWeight: 600 }}>{freshLead.safer.phone || '—'}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Operation Type</span><div style={{ fontWeight: 600 }}>{freshLead.safer.opType || '—'}</div></div>
+                  </div>
+                </div>
+
                 <div className="panel">
                   <div className="flex flex-between" style={{ marginBottom: 12 }}>
-                    <div className="lbl" style={{ marginBottom: 0 }}>FMCSA BASICs</div>
+                    <div className="lbl" style={{ marginBottom: 0 }}>FMCSA BASICs Scores</div>
                     <AlertBadge basics={freshLead.safer.basics as any} />
                   </div>
                   <BasicBars basics={freshLead.safer.basics as any} />
                 </div>
                 <div className="panel">
-                  <div className="lbl" style={{ marginBottom: 12 }}>MCS-150</div>
+                  <div className="lbl" style={{ marginBottom: 12 }}>MCS-150 Filing</div>
                   <div className="grid grid-3" style={{ gap: 8 }}>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Last Updated</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcs150.lastUpdate}</div></div>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Mileage</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcs150.mileage.toLocaleString()}</div></div>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Safety Rating</span><div style={{ fontWeight: 600 }}>{freshLead.safer.safetyRating}</div></div>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Drivers</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcs150.drivers}</div></div>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Power Units</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcs150.powerUnits}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Last Updated</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcs150.lastUpdate || '—'}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Mileage ({freshLead.safer.mcs150.year || '—'})</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcs150.mileage ? freshLead.safer.mcs150.mileage.toLocaleString() : '—'}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Safety Rating</span><div style={{ fontWeight: 700, color: freshLead.safer.safetyRating?.toLowerCase().includes('satisfactory') ? '#0f766e' : freshLead.safer.safetyRating?.toLowerCase().includes('unsat') ? '#9f1239' : '#1b2a4a' }}>{freshLead.safer.safetyRating || 'Not Rated'}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Drivers</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcs150.drivers ?? '—'}</div></div>
+                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Power Units</span><div style={{ fontWeight: 600 }}>{freshLead.safer.mcs150.powerUnits ?? '—'}</div></div>
                   </div>
                 </div>
                 <div className="panel">
                   <div className="lbl" style={{ marginBottom: 12 }}>Insurance on File</div>
-                  <div className="grid grid-2" style={{ gap: 8 }}>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Carrier</span><div style={{ fontWeight: 600, color: '#2563eb' }}>{freshLead.safer.insurance.current}</div></div>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Policy</span><div style={{ fontWeight: 600 }}>{freshLead.safer.insurance.policy}</div></div>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Effective</span><div style={{ fontWeight: 600 }}>{freshLead.safer.insurance.effective}</div></div>
-                    <div><span style={{ color: '#64748b', fontSize: 11 }}>Expiration</span><div style={{ fontWeight: 600 }}>{freshLead.safer.insurance.expiration}</div></div>
-                  </div>
+                  {!freshLead.safer.insurance.current && !freshLead.safer.insurance.policy ? (
+                    <div style={{ color: '#94a3b8', fontSize: 12 }}>No insurance data available from FMCSA for this carrier.</div>
+                  ) : (
+                    <div className="grid grid-2" style={{ gap: 8 }}>
+                      <div><span style={{ color: '#64748b', fontSize: 11 }}>Carrier</span><div style={{ fontWeight: 600, color: '#2563eb' }}>{freshLead.safer.insurance.current || '—'}</div></div>
+                      <div><span style={{ color: '#64748b', fontSize: 11 }}>Policy</span><div style={{ fontWeight: 600 }}>{freshLead.safer.insurance.policy || '—'}</div></div>
+                      <div><span style={{ color: '#64748b', fontSize: 11 }}>Effective</span><div style={{ fontWeight: 600 }}>{freshLead.safer.insurance.effective || '—'}</div></div>
+                      <div><span style={{ color: '#64748b', fontSize: 11 }}>Expiration</span><div style={{ fontWeight: 600 }}>{freshLead.safer.insurance.expiration || '—'}</div></div>
+                    </div>
+                  )}
                 </div>
+                {freshLead.safer.insuranceHistory && freshLead.safer.insuranceHistory.length > 0 && (
+                  <div className="panel">
+                    <div className="lbl" style={{ marginBottom: 10 }}>Insurance History</div>
+                    {freshLead.safer.insuranceHistory.map((ih: any, i: number) => (
+                      <div key={i} style={{ borderBottom: i < freshLead.safer!.insuranceHistory.length - 1 ? '1px solid #f1f5f9' : undefined, paddingBottom: 8, marginBottom: 8 }}>
+                        <div className="grid grid-3" style={{ gap: 6, fontSize: 12 }}>
+                          <div><span style={{ color: '#64748b' }}>Carrier: </span><span style={{ fontWeight: 600 }}>{ih.carrier || '—'}</span></div>
+                          <div><span style={{ color: '#64748b' }}>Policy: </span>{ih.policy || '—'}</div>
+                          <div><span style={{ color: '#64748b' }}>Coverage: </span>{ih.coverage || '—'}</div>
+                          <div><span style={{ color: '#64748b' }}>Effective: </span>{ih.effective || '—'}</div>
+                          <div><span style={{ color: '#64748b' }}>Expired: </span>{ih.expiration || '—'}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="grid grid-2" style={{ gap: 12 }}>
                   <div className="panel">
                     <div className="lbl" style={{ marginBottom: 8 }}>Inspections (24 mo)</div>
