@@ -249,6 +249,39 @@ export interface Application {
   data: Record<string, string>;
 }
 
+export type NotificationType = 'email_reply' | 'renewal_due' | 'mvr_complete' | 'lead_assigned' | 'policy_bound' | 'wallet_low' | 'system';
+
+export interface AppNotification {
+  id: string;
+  userId: string;          // recipient — empty string means broadcast to all
+  type: NotificationType;
+  title: string;
+  message: string;
+  href?: string;            // deep link
+  createdAt: string;
+  read: boolean;
+  leadId?: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  date: string;
+  type: 'topup' | 'mvr' | 'refund' | 'fee' | 'broker' | 'consultation';
+  description: string;
+  amount: number;           // positive = credit, negative = debit
+  balanceAfter: number;
+  reference?: string;
+}
+
+export interface Wallet {
+  userId: string;
+  balance: number;
+  autoRecharge: boolean;
+  autoRechargeThreshold: number;
+  autoRechargeAmount: number;
+  transactions: WalletTransaction[];
+}
+
 export interface CensusEntry {
   dot: string;
   company: string;

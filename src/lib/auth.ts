@@ -4,13 +4,12 @@ import { persist } from 'zustand/middleware';
 
 export type UserRole = 'admin' | 'manager' | 'producer';
 
-export type EmailProvider = 'gmail' | 'outlook' | 'smtp' | 'resend';
+export type EmailProvider = 'gmail' | 'outlook' | 'yahoo' | 'smtp' | 'resend';
 
 export interface EmailIntegration {
   provider: EmailProvider;
-  fromAddress: string;       // the connected email account
+  fromAddress: string;
   fromName?: string;
-  // Provider-specific:
   smtpHost?: string;
   smtpPort?: number;
   smtpUsername?: string;
@@ -18,6 +17,27 @@ export interface EmailIntegration {
   signature?: string;
   connectedAt: string;
   status: 'connected' | 'error' | 'pending';
+}
+
+export type CalendarProvider = 'google' | 'outlook' | 'apple';
+
+export interface CalendarIntegration {
+  provider: CalendarProvider;
+  accountEmail: string;
+  connectedAt: string;
+  status: 'connected' | 'error';
+  syncRenewals: boolean;
+  syncFollowUps: boolean;
+  defaultCalendar?: string;
+}
+
+export type ESignProvider = 'docusign' | 'hellosign' | 'adobesign';
+
+export interface ESignIntegration {
+  provider: ESignProvider;
+  accountEmail: string;
+  connectedAt: string;
+  status: 'connected' | 'error';
 }
 
 export interface AuthUser {
@@ -33,11 +53,15 @@ export interface AuthUser {
   plan?: string;
   phone?: string;
   emailIntegration?: EmailIntegration | null;
+  calendarIntegration?: CalendarIntegration | null;
+  eSignIntegration?: ESignIntegration | null;
   emailSignature?: string;
   notificationPrefs?: {
     emailAlerts?: boolean;
     renewalReminders?: boolean;
     weeklyDigest?: boolean;
+    walletLowBalance?: boolean;
+    mvrCompletions?: boolean;
   };
 }
 
@@ -58,6 +82,10 @@ interface AuthState {
   setStatus: (id: string, status: 'active' | 'suspended') => void;
   connectEmail: (id: string, integration: EmailIntegration) => void;
   disconnectEmail: (id: string) => void;
+  connectCalendar: (id: string, integration: CalendarIntegration) => void;
+  disconnectCalendar: (id: string) => void;
+  connectESign: (id: string, integration: ESignIntegration) => void;
+  disconnectESign: (id: string) => void;
   updateProfile: (id: string, updates: Partial<Pick<AuthUser, 'name' | 'phone' | 'emailSignature' | 'notificationPrefs'>>) => void;
 }
 
@@ -163,6 +191,22 @@ export const useAuthStore = create<AuthState>()(
       disconnectEmail: (id) => set(s => ({
         users: s.users.map(u => u.id === id ? { ...u, emailIntegration: null } : u),
         currentUser: s.currentUser?.id === id ? { ...s.currentUser, emailIntegration: null } : s.currentUser,
+      })),
+      connectCalendar: (id, integration) => set(s => ({
+        users: s.users.map(u => u.id === id ? { ...u, calendarIntegration: integration } : u),
+        currentUser: s.currentUser?.id === id ? { ...s.currentUser, calendarIntegration: integration } : s.currentUser,
+      })),
+      disconnectCalendar: (id) => set(s => ({
+        users: s.users.map(u => u.id === id ? { ...u, calendarIntegration: null } : u),
+        currentUser: s.currentUser?.id === id ? { ...s.currentUser, calendarIntegration: null } : s.currentUser,
+      })),
+      connectESign: (id, integration) => set(s => ({
+        users: s.users.map(u => u.id === id ? { ...u, eSignIntegration: integration } : u),
+        currentUser: s.currentUser?.id === id ? { ...s.currentUser, eSignIntegration: integration } : s.currentUser,
+      })),
+      disconnectESign: (id) => set(s => ({
+        users: s.users.map(u => u.id === id ? { ...u, eSignIntegration: null } : u),
+        currentUser: s.currentUser?.id === id ? { ...s.currentUser, eSignIntegration: null } : s.currentUser,
       })),
       updateProfile: (id, updates) => set(s => ({
         users: s.users.map(u => u.id === id ? { ...u, ...updates } : u),

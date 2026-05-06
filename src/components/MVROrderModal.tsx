@@ -1,19 +1,28 @@
 'use client';
 import { useState } from 'react';
 import { useCRMStore } from '@/lib/store';
-import type { Driver, Lead, MVROrder } from '@/lib/types';
+import { useAuthStore } from '@/lib/auth';
+import { usePlatformStore } from '@/lib/platform';
+import { fmt$ } from '@/lib/utils';
+import type { Lead, MVROrder } from '@/lib/types';
 import Modal from './ui/Modal';
 
-// Pricing — backend will eventually charge real cards / wallet balance
+// Pricing — wallet is debited at order time
 const SAMBA_VENDOR_COST = 14.50;
 const CARRIER_BASE_FEE = 5.00;
 
 export default function MVROrderModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const addMVROrder = useCRMStore(s => s.addMVROrder);
+  const currentUser = useAuthStore(s => s.currentUser);
+  const ensureWallet = usePlatformStore(s => s.ensureWallet);
+  const charge = usePlatformStore(s => s.charge);
+  const pushNotification = usePlatformStore(s => s.pushNotification);
+  const wallet = currentUser ? (usePlatformStore(s => s.wallets[currentUser.id]) || ensureWallet(currentUser.id)) : null;
   const drivers = lead.drivers || [];
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   const toggle = (i: number) => {
     const next = new Set(selected);
@@ -27,7 +36,16 @@ export default function MVROrderModal({ lead, onClose }: { lead: Lead; onClose: 
 
   const submit = () => {
     if (selected.size === 0) return alert('Select at least one driver.');
+    if (!currentUser) { setWalletError('You must be signed in.'); return; }
+    setWalletError(null);
     setSubmitting(true);
+    // Charge wallet first
+    const result = charge(currentUser.id, total, 'mvr', `MVR order — ${selected.size} driver${selected.size > 1 ? 's' : ''} for ${lead.company}`, lead.id);
+    if (!result.ok) {
+      setWalletError(`Insufficient wallet balance (${fmt$(wallet?.balance || 0)}). Top up in Settings or enable auto-recharge.`);
+      setSubmitting(false);
+      return;
+    }
     // Simulate ordering — once the Samba Safety API key is added, this becomes a real call
     setTimeout(() => {
       const date = new Date().toISOString().split('T')[0];
@@ -45,6 +63,13 @@ export default function MVROrderModal({ lead, onClose }: { lead: Lead; onClose: 
           vendor: 'Samba Safety',
         };
         addMVROrder(lead.id, order);
+      });
+      // Push a notification for the user
+      pushNotification({
+        userId: currentUser.id, type: 'mvr_complete',
+        title: `${selected.size} MVR${selected.size > 1 ? 's' : ''} ordered`,
+        message: `${selected.size} MVR${selected.size > 1 ? 's' : ''} submitted for ${lead.company}. Results expected in 1–4 hours.`,
+        href: '/leads', leadId: lead.id,
       });
       setSubmitting(false);
       setConfirmed(true);
@@ -74,6 +99,17 @@ export default function MVROrderModal({ lead, onClose }: { lead: Lead; onClose: 
       <div style={{ marginBottom: 12, fontSize: 12, color: '#64748b' }}>
         Order Motor Vehicle Records for one or more drivers. Results return within 1–4 hours and update each driver&rsquo;s file automatically.
       </div>
+
+      {/* Wallet balance */}
+      {wallet && (
+        <div style={{ background: wallet.balance < 50 ? '#fff1f2' : '#f0fdfa', border: `1px solid ${wallet.balance < 50 ? '#fda4af' : '#5eead4'}`, borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: wallet.balance < 50 ? '#9f1239' : '#0f766e', textTransform: 'uppercase' }}>Wallet Balance</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: wallet.balance < 50 ? '#9f1239' : '#0f766e' }}>{fmt$(wallet.balance)}</div>
+          </div>
+          <a href="/settings" style={{ fontSize: 11, color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>Manage in Settings →</a>
+        </div>
+      )}
       <div style={{ background: '#f8fafc', borderRadius: 10, padding: 12, marginBottom: 14, fontSize: 12, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
         <div><div style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Vendor (Samba)</div><div style={{ fontWeight: 700 }}>${SAMBA_VENDOR_COST.toFixed(2)} / driver</div></div>
         <div><div style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>CarrierBase Fee</div><div style={{ fontWeight: 700 }}>${CARRIER_BASE_FEE.toFixed(2)} / driver</div></div>
@@ -104,6 +140,12 @@ export default function MVROrderModal({ lead, onClose }: { lead: Lead; onClose: 
             ))}
           </div>
         </>
+      )}
+
+      {walletError && (
+        <div style={{ marginTop: 12, padding: '10px 12px', background: '#fff1f2', border: '1px solid #fda4af', borderRadius: 8, fontSize: 12, color: '#9f1239' }}>
+          {walletError}
+        </div>
       )}
 
       <div className="flex flex-between" style={{ marginTop: 16, padding: 14, background: '#1b2a4a', borderRadius: 10, color: '#fff' }}>

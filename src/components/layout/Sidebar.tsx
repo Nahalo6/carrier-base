@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useCRMStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth';
+import NotificationBell from '@/components/NotificationBell';
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Trophy, Users, Kanban, Building2, Search,
@@ -97,6 +98,7 @@ export default function Sidebar() {
               <div style={{ fontSize: 12, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser.name}</div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>{currentUser.role}</div>
             </div>
+            <NotificationBell />
           </div>
           <button onClick={handleSignOut}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '7px 10px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>

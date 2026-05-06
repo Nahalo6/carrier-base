@@ -1,6 +1,8 @@
 'use client';
 import { useState, useRef } from 'react';
 import { useCRMStore } from '@/lib/store';
+import { useAuthStore } from '@/lib/auth';
+import { usePlatformStore } from '@/lib/platform';
 import { STATUSES, STATUS_COLORS } from '@/lib/constants';
 import { fmt$, unreadCount, daysSince, stageBadgeColor, producerDotColor } from '@/lib/utils';
 import type { Lead, LeadStatus } from '@/lib/types';
@@ -13,6 +15,8 @@ const PIPE_STATUSES: LeadStatus[] = ['New Lead', 'Contacted', 'Quoting', 'Submit
 export default function PipelinePage() {
   const leads = useCRMStore(s => s.leads);
   const setLeadStatus = useCRMStore(s => s.setLeadStatus);
+  const currentUser = useAuthStore(s => s.currentUser);
+  const pushNotification = usePlatformStore(s => s.pushNotification);
   const router = useRouter();
   const [dragId, setDragId] = useState<string | null>(null);
   const [overStatus, setOverStatus] = useState<string | null>(null);
@@ -28,8 +32,20 @@ export default function PipelinePage() {
   };
   const handleDrop = (e: React.DragEvent, status: string) => {
     e.preventDefault();
-    if (dragId && status !== leads.find(l => l.id === dragId)?.status) {
-      setLeadStatus(dragId, status as LeadStatus);
+    if (dragId) {
+      const lead = leads.find(l => l.id === dragId);
+      if (lead && status !== lead.status) {
+        setLeadStatus(dragId, status as LeadStatus);
+        // Push notification for milestone status changes
+        if (status === 'Bound' && currentUser) {
+          pushNotification({
+            userId: currentUser.id, type: 'policy_bound',
+            title: `${lead.company} bound`,
+            message: `Moved to Bound. Add policy details in the Policies & Bound tab.`,
+            href: '/policy', leadId: lead.id,
+          });
+        }
+      }
     }
     setDragId(null);
     setOverStatus(null);
