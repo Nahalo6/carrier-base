@@ -83,7 +83,9 @@ export default function ApplicationsPage() {
       <div className="content">
         {apps.length === 0 && (
           <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>📄</div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 56, height: 56, borderRadius: 14, background: '#f1f5f9', color: '#94a3b8', marginBottom: 12 }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
             <div style={{ fontSize: 14 }}>No applications yet. Create your first.</div>
           </div>
         )}

@@ -93,6 +93,10 @@ export interface Document {
   date: string;
   size: string;
   checklistItem?: string;
+  // For uploaded files
+  mimeType?: string;
+  dataUrl?: string;        // base64 data URL — stored for download/preview
+  uploadedBy?: string;
 }
 
 export interface Driver {
@@ -213,6 +217,8 @@ export interface Producer {
   goals: { deals: number; binds: number; declines: number; premium: number; revenue: number };
 }
 
+export type ContactType = 'Underwriter' | 'Market' | 'Broker' | 'Producer' | 'Insured' | 'Carrier' | 'Vendor' | 'Other';
+
 export interface Contact {
   id: string;
   name: string;
@@ -220,6 +226,7 @@ export interface Contact {
   role: string;
   email: string;
   phone: string;
+  type?: ContactType;
   notes?: string;
   created?: string;
 }

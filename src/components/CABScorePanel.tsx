@@ -125,7 +125,7 @@ export default function CABScorePanel({
               <div style={{ fontSize: 10, fontWeight: 700, color: '#9f1239', textTransform: 'uppercase', marginBottom: 6 }}>Red Flags ({score.redFlags.length})</div>
               {score.redFlags.map((f, i) => (
                 <div key={i} style={{ fontSize: 11, color: '#7f1d1d', display: 'flex', gap: 6, marginBottom: 3 }}>
-                  <span style={{ color: '#9f1239', fontWeight: 700 }}>×</span> {f}
+                  <span style={{ color: '#9f1239', fontWeight: 700 }}>—</span> {f}
                 </div>
               ))}
             </div>
@@ -135,7 +135,7 @@ export default function CABScorePanel({
               <div style={{ fontSize: 10, fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', marginBottom: 6 }}>Strengths ({score.greenFlags.length})</div>
               {score.greenFlags.map((f, i) => (
                 <div key={i} style={{ fontSize: 11, color: '#134e4a', display: 'flex', gap: 6, marginBottom: 3 }}>
-                  <span style={{ color: '#0f766e', fontWeight: 700 }}>✓</span> {f}
+                  <span style={{ color: '#0f766e', fontWeight: 700 }}>·</span> {f}
                 </div>
               ))}
             </div>

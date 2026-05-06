@@ -176,11 +176,31 @@ function ComposeModal({ lead, opts, onClose }: {
   onClose: () => void;
 }) {
   const addEmail = useCRMStore(s => s.addEmail);
+  const contacts = useCRMStore(s => s.contacts);
   const [to, setTo] = useState(opts?.to ?? lead.email);
   const [toName, setToName] = useState(opts?.toName ?? lead.contact);
   const [subj, setSubj] = useState(opts?.subj ?? '');
   const [body, setBody] = useState(opts?.body ?? '');
   const [tag, setTag] = useState('');
+  const [contactSel, setContactSel] = useState('');
+
+  const handleContactPick = (id: string) => {
+    setContactSel(id);
+    if (!id) return;
+    const c = contacts.find(ct => ct.id === id);
+    if (c) {
+      if (c.email) setTo(c.email);
+      if (c.name) setToName(c.name);
+    }
+  };
+
+  // Group contacts by type for the dropdown
+  const contactGroups = contacts.reduce<Record<string, typeof contacts>>((acc, c) => {
+    const t = c.type || 'Other';
+    if (!acc[t]) acc[t] = [];
+    acc[t].push(c);
+    return acc;
+  }, {});
 
   const send = () => {
     addEmail(lead.id, { date: todayISO(), subj, dir: 'out', body, to, toName, tag });
@@ -190,6 +210,22 @@ function ComposeModal({ lead, opts, onClose }: {
   return (
     <Modal title="Compose Email" onClose={onClose} width={860}>
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
+        {contacts.length > 0 && (
+          <div style={{ marginBottom: 14, padding: 12, background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 10 }}>
+            <label className="lbl" style={{ color: '#1e40af', marginBottom: 6 }}>Pick a contact (optional)</label>
+            <select className="sel" style={{ width: '100%' }} value={contactSel} onChange={e => handleContactPick(e.target.value)}>
+              <option value="">— Choose from contacts —</option>
+              {Object.entries(contactGroups).sort(([a], [b]) => a.localeCompare(b)).map(([type, group]) => (
+                <optgroup key={type} label={type}>
+                  {group.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} {c.company ? `· ${c.company}` : ''} {c.email ? `<${c.email}>` : ''}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>Selecting a contact pre-fills the To fields below.</div>
+          </div>
+        )}
         <div style={{ marginBottom: 12 }}>
           <label className="lbl">To (Email)</label>
           <input className="inp" value={to} onChange={e => setTo(e.target.value)} />
@@ -252,7 +288,7 @@ function PreUWPanel({ lead }: { lead: Lead }) {
   if (markets.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-        <div style={{ fontSize: 32, marginBottom: 10 }}>🏢</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Markets</div>
         <div style={{ fontSize: 14, fontWeight: 600, color: '#1b2a4a', marginBottom: 6 }}>No markets configured</div>
         <div style={{ fontSize: 12 }}>Add markets with appetite criteria first, then run Pre-UW.</div>
       </div>
@@ -278,8 +314,8 @@ function PreUWPanel({ lead }: { lead: Lead }) {
           <div style={{ fontSize: 12, color: '#1b2a4a', display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
             <span>{lead.fleet} units · {lead.years} yr{lead.years !== 1 ? 's' : ''}</span>
             <span>{lead.violations} violation{lead.violations !== 1 ? 's' : ''}</span>
-            {lead.hazmat && <span style={{ color: '#9f1239', fontWeight: 600 }}>⚠ Hazmat</span>}
-            {lead.safer ? <span style={{ color: '#0f766e' }}>✓ SAFER linked</span> : <span style={{ color: '#92400e' }}>⚠ No SAFER</span>}
+            {lead.hazmat && <span style={{ color: '#9f1239', fontWeight: 600 }}>Hazmat</span>}
+            {lead.safer ? <span style={{ color: '#0f766e' }}>SAFER linked</span> : <span style={{ color: '#92400e' }}>No SAFER</span>}
           </div>
           {lead.commodities.length > 0 && (
             <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
@@ -348,7 +384,7 @@ function MarketResultCard({ result, alreadyAdded, onAdd }: {
           <span style={{ fontWeight: 700, fontSize: 16, color: scoreColor }}>{score}/100</span>
           {alreadyAdded ? (
             <span style={{ fontSize: 11, color: '#0f766e', fontWeight: 600, padding: '3px 8px', background: '#f0fdfa', border: '1px solid #5eead4', borderRadius: 6 }}>
-              ✓ In Markets
+              In Markets
             </span>
           ) : (
             <button onClick={onAdd}
@@ -367,7 +403,7 @@ function MarketResultCard({ result, alreadyAdded, onAdd }: {
           </div>
           {reasons.map((r, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#7f1d1d', marginBottom: 4, lineHeight: 1.4 }}>
-              <span style={{ marginTop: 2, color: '#9f1239', flexShrink: 0, fontWeight: 700 }}>✗</span>
+              <span style={{ marginTop: 2, color: '#9f1239', flexShrink: 0, fontWeight: 800, fontSize: 12 }}>—</span>
               {r}
             </div>
           ))}
@@ -382,7 +418,7 @@ function MarketResultCard({ result, alreadyAdded, onAdd }: {
           </div>
           {warnings.map((w, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#78350f', marginBottom: 4, lineHeight: 1.4 }}>
-              <span style={{ marginTop: 2, color: '#b45309', flexShrink: 0, fontWeight: 700 }}>⚠</span>
+              <span style={{ marginTop: 2, color: '#b45309', flexShrink: 0, fontWeight: 800, fontSize: 11, padding: '0 4px', border: '1.5px solid #b45309', borderRadius: 3 }}>!</span>
               {w}
             </div>
           ))}
@@ -392,9 +428,241 @@ function MarketResultCard({ result, alreadyAdded, onAdd }: {
       {/* Clean pass */}
       {reasons.length === 0 && warnings.length === 0 && (
         <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#0f766e' }}>
-          <span style={{ fontWeight: 700 }}>✓</span> Meets all known appetite criteria
+          <span style={{ fontWeight: 700 }}>Eligible</span> · Meets all known appetite criteria
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Documents Tab ────────────────────────────────────────────────────────────
+function DocumentsTab({ lead }: { lead: Lead }) {
+  const addDoc = useCRMStore(s => s.addDoc);
+  const deleteDoc = useCRMStore(s => s.deleteDoc);
+  const [pendingFiles, setPendingFiles] = useState<{ file: File; tag: string }[]>([]);
+  const [defaultTag, setDefaultTag] = useState<string>(DOC_TAGS[0]);
+  const [filterTag, setFilterTag] = useState<string>('All');
+  const [over, setOver] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const formatBytes = (n: number): string => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(2)} MB`;
+  };
+
+  const fileToDataUrl = (f: File): Promise<string> => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = rej;
+    r.readAsDataURL(f);
+  });
+
+  const handleFiles = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setUploadError(null);
+    const newFiles = Array.from(fileList).map(file => {
+      // Auto-detect tag from filename
+      const lower = file.name.toLowerCase();
+      let detected = defaultTag;
+      if (lower.includes('app') || lower.includes('application')) detected = 'Application';
+      else if (lower.includes('loss') || lower.includes('runs')) detected = 'Loss Runs';
+      else if (lower.includes('mvr')) detected = 'MVRs';
+      else if (lower.includes('ifta')) detected = 'IFTAs';
+      else if (lower.includes('finance')) detected = 'Finance Agreement';
+      else if (lower.includes('signed')) detected = 'Signed Documents';
+      else if (lower.includes('lease') && lower.includes('term')) detected = 'Lease Terminations';
+      return { file, tag: detected };
+    });
+    setPendingFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const setPendingTag = (idx: number, tag: string) => {
+    setPendingFiles(prev => prev.map((p, i) => i === idx ? { ...p, tag } : p));
+  };
+  const removePending = (idx: number) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const uploadAll = async () => {
+    setUploadError(null);
+    const totalSize = pendingFiles.reduce((s, f) => s + f.file.size, 0);
+    // Stay under ~4MB combined to keep zustand persist healthy in localStorage
+    if (totalSize > 4 * 1024 * 1024) {
+      setUploadError('Total size exceeds 4 MB. For larger uploads, please upload files individually or use cloud storage.');
+      return;
+    }
+    try {
+      for (const { file, tag } of pendingFiles) {
+        const dataUrl = await fileToDataUrl(file);
+        addDoc(lead.id, {
+          id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          name: file.name, tag, date: todayISO(),
+          size: formatBytes(file.size),
+          mimeType: file.type, dataUrl,
+        });
+      }
+      setPendingFiles([]);
+    } catch {
+      setUploadError('Could not read one or more files. Try again.');
+    }
+  };
+
+  const downloadDoc = (doc: typeof lead.docs[number]) => {
+    if (!doc.dataUrl) return;
+    const a = document.createElement('a');
+    a.href = doc.dataUrl;
+    a.download = doc.name;
+    a.click();
+  };
+
+  const docTypeIcon = (mime?: string, name?: string) => {
+    const m = (mime || '').toLowerCase();
+    const n = (name || '').toLowerCase();
+    if (m.includes('pdf') || n.endsWith('.pdf')) return 'PDF';
+    if (m.includes('word') || n.endsWith('.doc') || n.endsWith('.docx')) return 'DOC';
+    if (m.includes('sheet') || m.includes('excel') || n.endsWith('.xls') || n.endsWith('.xlsx') || n.endsWith('.csv')) return 'XLS';
+    if (m.includes('image') || n.endsWith('.jpg') || n.endsWith('.png') || n.endsWith('.jpeg')) return 'IMG';
+    if (n.endsWith('.eml') || n.endsWith('.msg')) return 'MSG';
+    return 'FILE';
+  };
+
+  const visibleDocs = filterTag === 'All' ? lead.docs : lead.docs.filter(d => d.tag === filterTag);
+
+  return (
+    <div>
+      <div className="flex flex-between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: 13, color: '#64748b' }}>{lead.docs.length} document{lead.docs.length !== 1 ? 's' : ''} on file</div>
+        <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+          <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Filter:</label>
+          <select className="sel" style={{ width: 160 }} value={filterTag} onChange={e => setFilterTag(e.target.value)}>
+            <option value="All">All ({lead.docs.length})</option>
+            {DOC_TAGS.map(t => (
+              <option key={t} value={t}>{t} ({lead.docs.filter(d => d.tag === t).length})</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Drop zone */}
+      <div
+        onDragOver={e => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={e => { e.preventDefault(); setOver(false); handleFiles(e.dataTransfer.files); }}
+        onClick={() => document.getElementById('docs-file-input')?.click()}
+        style={{
+          border: `2px dashed ${over ? '#2563eb' : '#cbd5e1'}`,
+          borderRadius: 12, padding: '24px 18px', marginBottom: 14,
+          background: over ? '#eff6ff' : '#f8fafc',
+          cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s',
+        }}>
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={over ? '#2563eb' : '#64748b'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8 }}>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <div style={{ fontWeight: 700, fontSize: 14, color: '#1b2a4a', marginBottom: 4 }}>Drop files here or click to browse</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>PDFs, Word, Excel, images, emails (.eml/.msg) — multiple files OK</div>
+        <div className="flex" style={{ gap: 8, alignItems: 'center', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+          <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Default tag:</label>
+          <select className="sel" style={{ width: 180, fontSize: 11 }} value={defaultTag} onChange={e => setDefaultTag(e.target.value)}>
+            {DOC_TAGS.map(t => <option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <input id="docs-file-input" type="file" multiple
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.txt,.eml,.msg,application/pdf,image/*"
+          style={{ display: 'none' }}
+          onChange={e => handleFiles(e.target.files)} />
+      </div>
+
+      {uploadError && (
+        <div style={{ background: '#fff1f2', border: '1px solid #fda4af', color: '#9f1239', padding: '10px 12px', borderRadius: 8, fontSize: 12, marginBottom: 12 }}>{uploadError}</div>
+      )}
+
+      {/* Pending files list with tag selectors */}
+      {pendingFiles.length > 0 && (
+        <div className="panel" style={{ marginBottom: 14, background: '#eff6ff', border: '1px solid #93c5fd' }}>
+          <div className="flex flex-between" style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1e40af' }}>Ready to upload ({pendingFiles.length})</div>
+            <div className="flex" style={{ gap: 6 }}>
+              <button className="btn-s btn-sm" onClick={() => setPendingFiles([])}>Clear</button>
+              <button className="btn-p btn-sm" onClick={uploadAll}>Upload All</button>
+            </div>
+          </div>
+          {pendingFiles.map((p, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#fff', borderRadius: 8, marginBottom: 6 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 6, background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+                {docTypeIcon(p.file.type, p.file.name)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 12, color: '#1b2a4a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.file.name}</div>
+                <div style={{ fontSize: 10, color: '#64748b' }}>{formatBytes(p.file.size)}</div>
+              </div>
+              <select className="sel" style={{ width: 160, fontSize: 11 }} value={p.tag} onChange={e => setPendingTag(i, e.target.value)}>
+                {DOC_TAGS.map(t => <option key={t}>{t}</option>)}
+              </select>
+              <button className="btn-s btn-sm btn-danger" onClick={() => removePending(i)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Existing docs */}
+      {lead.docs.length === 0 && pendingFiles.length === 0 && (
+        <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No documents yet — drop files above to upload.</div>
+      )}
+
+      {filterTag === 'All' ? (
+        DOC_TAGS.map(tag => {
+          const docs = lead.docs.filter(d => d.tag === tag);
+          if (!docs.length) return null;
+          return (
+            <div key={tag} className="doc-folder">
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1b2a4a', marginBottom: 8 }}>{tag} ({docs.length})</div>
+              {docs.map(d => (
+                <DocItem key={d.id} doc={d} icon={docTypeIcon(d.mimeType, d.name)} onDownload={() => downloadDoc(d)} onDelete={() => { if (confirm(`Delete ${d.name}?`)) deleteDoc(lead.id, d.id); }} />
+              ))}
+            </div>
+          );
+        })
+      ) : (
+        visibleDocs.length > 0 ? (
+          <div className="doc-folder">
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1b2a4a', marginBottom: 8 }}>{filterTag} ({visibleDocs.length})</div>
+            {visibleDocs.map(d => (
+              <DocItem key={d.id} doc={d} icon={docTypeIcon(d.mimeType, d.name)} onDownload={() => downloadDoc(d)} onDelete={() => { if (confirm(`Delete ${d.name}?`)) deleteDoc(lead.id, d.id); }} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No {filterTag} documents.</div>
+        )
+      )}
+    </div>
+  );
+}
+
+function DocItem({ doc, icon, onDownload, onDelete }: {
+  doc: { id: string; name: string; date: string; size: string; tag: string; dataUrl?: string };
+  icon: string;
+  onDownload: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="doc-item">
+      <div className="flex" style={{ gap: 10, alignItems: 'center' }}>
+        <div style={{ width: 36, height: 36, borderRadius: 6, background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>
+          {icon}
+        </div>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{doc.name}</div>
+          <div style={{ fontSize: 10, color: '#94a3b8' }}>{doc.date} · {doc.size}</div>
+        </div>
+      </div>
+      <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+        <span className={`tag ${DOC_TAG_COLORS[doc.tag] || 'tag-slate'}`}>{doc.tag}</span>
+        {doc.dataUrl && <button className="btn-s btn-sm" onClick={onDownload}>Download</button>}
+        <button className="btn-s btn-sm btn-danger" onClick={onDelete}>×</button>
+      </div>
     </div>
   );
 }
@@ -696,7 +964,7 @@ const DETAIL_TABS = [
   { key: 'markets',  label: 'Markets' },
 ];
 
-function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void; onClose: () => void }) {
+function LeadDetail({ lead, onEdit, onClose, onDelete }: { lead: Lead; onEdit: () => void; onClose: () => void; onDelete: () => void }) {
   const [tab, setTab] = useState('overview');
   const [composeOpts, setComposeOpts] = useState<{ to?: string; toName?: string; subj?: string; body?: string } | null>(null);
   const [showCompose, setShowCompose] = useState(false);
@@ -852,7 +1120,8 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
         <div className="flex" style={{ gap: 8 }}>
           <StatusBadge status={freshLead.status} />
           <button className="btn-s btn-sm" onClick={onEdit}>Edit</button>
-          <button className="btn-s btn-sm" onClick={onClose}>✕</button>
+          <button className="btn-s btn-sm btn-danger" onClick={onDelete}>Delete</button>
+          <button className="btn-s btn-sm" onClick={onClose} aria-label="Close">×</button>
         </div>
       </div>
 
@@ -896,7 +1165,7 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
                   <div><div style={{ fontSize: 10, color: '#64748b' }}>Fleet Size</div><div style={{ fontWeight: 600, fontSize: 13 }}>{freshLead.fleet} units</div></div>
                   <div><div style={{ fontSize: 10, color: '#64748b' }}>Years in Business</div><div style={{ fontWeight: 600, fontSize: 13 }}>{freshLead.years} yrs</div></div>
                   <div><div style={{ fontSize: 10, color: '#64748b' }}>Premium</div><div style={{ fontWeight: 700, fontSize: 15, color: '#0f766e' }}>{freshLead.premium > 0 ? fmt$(freshLead.premium) : '—'}</div></div>
-                  <div><div style={{ fontSize: 10, color: '#64748b' }}>Hazmat</div><div style={{ fontWeight: 600, fontSize: 13 }}>{freshLead.hazmat ? '⚠ Yes' : 'No'}</div></div>
+                  <div><div style={{ fontSize: 10, color: '#64748b' }}>Hazmat</div><div style={{ fontWeight: 600, fontSize: 13, color: freshLead.hazmat ? '#9f1239' : undefined }}>{freshLead.hazmat ? 'Yes' : 'No'}</div></div>
                 </div>
               </div>
               <div className="panel">
@@ -964,7 +1233,7 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
                   <div style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
                     onClick={() => toggleEmailExpand(freshLead.id, realIdx)}>
                     <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: e.dir === 'out' ? '#eff6ff' : '#f0fdfa', color: e.dir === 'out' ? '#1e40af' : '#0f766e' }}>
-                      {e.dir === 'out' ? '↑ SENT' : '↓ RECV'}
+                      {e.dir === 'out' ? 'SENT' : 'RECV'}
                     </span>
                     {isUnread && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb', flexShrink: 0 }} />}
                     <span style={{ fontWeight: isUnread ? 700 : 500, fontSize: 13, color: '#1b2a4a', flex: 1 }}>{e.subj}</span>
@@ -1001,33 +1270,7 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
 
         {/* DOCS */}
         {tab === 'docs' && (
-          <div>
-            <div className="flex flex-between" style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 13, color: '#64748b' }}>{freshLead.docs.length} documents</div>
-            </div>
-            {freshLead.docs.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 24 }}>No documents yet.</div>}
-            {DOC_TAGS.map(tag => {
-              const docs = freshLead.docs.filter(d => d.tag === tag);
-              if (!docs.length) return null;
-              return (
-                <div key={tag} className="doc-folder">
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1b2a4a', marginBottom: 8 }}>{tag} ({docs.length})</div>
-                  {docs.map(d => (
-                    <div key={d.id} className="doc-item">
-                      <div className="flex" style={{ gap: 8 }}>
-                        <span>📄</span>
-                        <div>
-                          <div style={{ fontWeight: 500, fontSize: 13 }}>{d.name}</div>
-                          <div style={{ fontSize: 10, color: '#94a3b8' }}>{d.date} · {d.size}</div>
-                        </div>
-                      </div>
-                      <span className={`tag ${DOC_TAG_COLORS[d.tag] || 'tag-slate'}`}>{d.tag}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
+          <DocumentsTab lead={freshLead} />
         )}
 
         {/* DRIVERS */}
@@ -1181,13 +1424,13 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
                 disabled={saferLoading || !freshLead.dot}
                 style={{ minWidth: 140, opacity: (!freshLead.dot || saferLoading) ? 0.6 : 1, cursor: (!freshLead.dot || saferLoading) ? 'not-allowed' : 'pointer' }}
               >
-                {saferLoading ? '⏳ Fetching…' : freshLead.safer ? '🔄 Refresh FMCSA Data' : '⬇ Pull FMCSA Data'}
+                {saferLoading ? 'Fetching…' : freshLead.safer ? 'Refresh FMCSA Data' : 'Pull FMCSA Data'}
               </button>
             </div>
 
             {!freshLead.safer ? (
               <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 32 }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📡</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>FMCSA</div>
                 <div style={{ fontWeight: 600, color: '#1b2a4a', marginBottom: 4 }}>No FMCSA data yet</div>
                 <div>Click &ldquo;Pull FMCSA Data&rdquo; above to fetch live data for DOT# {freshLead.dot || '(no DOT set)'}.</div>
               </div>
@@ -1331,11 +1574,23 @@ function LeadDetail({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void;
 // ─── Main Leads Page ──────────────────────────────────────────────────────────
 export default function LeadsPage() {
   const leads = useCRMStore(s => s.leads);
+  const deleteLead = useCRMStore(s => s.deleteLead);
   const [search, setSearch] = useState('');
   const [statusF, setStatusF] = useState('All');
   const [selLead, setSelLead] = useState<Lead | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editLead, setEditLead] = useState<Lead | undefined>(undefined);
+
+  const handleDeleteLead = (lead: Lead) => {
+    const policyCount = (lead.policies || []).length;
+    const msg = policyCount > 0
+      ? `Delete ${lead.company}? This will also remove ${policyCount} policy record${policyCount > 1 ? 's' : ''}, ${lead.emails.length} email${lead.emails.length !== 1 ? 's' : ''}, and ${lead.docs.length} document${lead.docs.length !== 1 ? 's' : ''}. This cannot be undone.`
+      : `Delete ${lead.company}? This cannot be undone.`;
+    if (confirm(msg)) {
+      deleteLead(lead.id);
+      setSelLead(null);
+    }
+  };
 
   const filtered = leads.filter(l => {
     const matchSearch = !search || l.company.toLowerCase().includes(search.toLowerCase()) || l.dot.includes(search) || l.contact.toLowerCase().includes(search.toLowerCase());
@@ -1367,7 +1622,7 @@ export default function LeadsPage() {
           {/* Unread banner */}
           {leadsWithUnread.length > 0 && (
             <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 12 }}>
-              <div style={{ fontWeight: 700, color: '#92400e', marginBottom: 6 }}>📬 {totalUnread} unread email{totalUnread > 1 ? 's' : ''}</div>
+              <div style={{ fontWeight: 700, color: '#92400e', marginBottom: 6 }}>{totalUnread} unread email{totalUnread > 1 ? 's' : ''}</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {leadsWithUnread.map(l => (
                   <button key={l.id} style={{ fontSize: 11, padding: '3px 8px', background: '#fff', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', color: '#92400e' }}
@@ -1389,7 +1644,7 @@ export default function LeadsPage() {
                 <div className="flex flex-between" style={{ marginBottom: 4 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: '#1b2a4a' }}>{l.company}</div>
                   {uCount > 0 && (
-                    <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 100, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>📬 {uCount}</span>
+                    <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 100, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>{uCount} new</span>
                   )}
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>DOT# {l.dot} · {l.contact}</div>
@@ -1405,10 +1660,12 @@ export default function LeadsPage() {
         {/* Detail Panel */}
         <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
           {selLead ? (
-            <LeadDetail lead={selLead} onEdit={() => openEdit(selLead)} onClose={() => setSelLead(null)} />
+            <LeadDetail lead={selLead} onEdit={() => openEdit(selLead)} onClose={() => setSelLead(null)} onDelete={() => handleDeleteLead(selLead)} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' }}>
-              <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 56, height: 56, borderRadius: 14, background: '#f1f5f9', color: '#94a3b8', marginBottom: 12 }}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
               <div style={{ fontSize: 14 }}>Select a lead to view details</div>
             </div>
           )}

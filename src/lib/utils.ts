@@ -178,7 +178,7 @@ export function stageBadgeColor(days: number, status: LeadStatus): { bg: string;
   };
   const bench = benchmarks[status];
   if (!bench) return { bg: '#f1f5f9', color: '#64748b', label: `${days}d` };
-  if (days > bench * 1.5) return { bg: '#fff1f2', color: '#9f1239', label: `${days}d ⚠` };
+  if (days > bench * 1.5) return { bg: '#fff1f2', color: '#9f1239', label: `${days}d` };
   if (days > bench) return { bg: '#fefce8', color: '#92400e', label: `${days}d` };
   return { bg: '#f0fdfa', color: '#0f766e', label: `${days}d` };
 }

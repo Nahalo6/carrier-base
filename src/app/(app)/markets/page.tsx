@@ -114,7 +114,7 @@ export default function MarketsPage() {
                   </div>
                 </div>
                 <div style={{ marginTop: 10, fontSize: 11, color: '#64748b' }}>
-                  {m.apt.noHaz ? '✗ No Hazmat' : '✓ Writes Hazmat'} · Max {m.apt.maxViol} violations
+                  {m.apt.noHaz ? 'No Hazmat' : 'Writes Hazmat'} · Max {m.apt.maxViol} violations
                 </div>
               </div>
             );

@@ -155,7 +155,7 @@ function CheckoutInner() {
     if (!code) { setPromoMsg(null); return; }
     if (PROMO_CODES[code]) {
       setPromoApplied({ code, pct: PROMO_CODES[code] });
-      setPromoMsg(`✓ ${PROMO_CODES[code]}% off applied`);
+      setPromoMsg(`${PROMO_CODES[code]}% off applied`);
     } else {
       setPromoApplied(null);
       setPromoMsg('Invalid promo code');
@@ -610,7 +610,7 @@ function ItemCard({ item, selected, onToggle }: { item: CatalogItem; selected: b
         </div>
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0', fontSize: 12, color: '#475569' }}>
           {item.features.slice(0, 3).map(f => (
-            <li key={f} style={{ display: 'flex', gap: 6, padding: '2px 0' }}><span style={{ color: '#0f766e', fontWeight: 700 }}>✓</span> {f}</li>
+            <li key={f} style={{ display: 'flex', gap: 6, padding: '2px 0' }}><span style={{ color: '#0f766e', fontWeight: 700 }}>·</span> {f}</li>
           ))}
         </ul>
       </div>

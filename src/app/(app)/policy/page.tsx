@@ -44,9 +44,29 @@ export default function PolicyPage() {
   const allPolicies: PolicyRow[] = useMemo(() => {
     const rows: PolicyRow[] = [];
     leads.forEach(l => {
-      (l.policies || []).forEach(p => {
+      const explicitPolicies = l.policies || [];
+      explicitPolicies.forEach(p => {
         rows.push({ policy: p, lead: l, daysToRenewal: computeRenewalDays(p) });
       });
+      // ── Auto-include Bound accounts that don't have explicit policy records yet
+      // (so dragging in the Pipeline → Bound surfaces them here immediately).
+      if (l.status === 'Bound' && explicitPolicies.length === 0) {
+        const placeholder: Policy = {
+          id: `placeholder_${l.id}`,
+          policyNumber: l.policyNumber || '— Add policy details —',
+          line: l.lines[0] || 'Auto Liability',
+          market: l.markets[0]?.mid || '',
+          marketName: '',
+          producer: l.producer,
+          premium: l.premium || 0,
+          effectiveDate: l.effectiveDate || l.boundDate || '',
+          expirationDate: l.expirationDate || '',
+          bindDate: l.boundDate || '',
+          status: 'Pending',
+          notes: 'Bound via Pipeline — click to add policy details.',
+        };
+        rows.push({ policy: placeholder, lead: l, daysToRenewal: computeRenewalDays(placeholder) });
+      }
     });
     return rows;
   }, [leads]);
@@ -278,8 +298,9 @@ export default function PolicyPage() {
                       </td>
                       <td style={{ padding: 12, textAlign: 'right' }}>
                         <div className="flex" style={{ gap: 4, justifyContent: 'flex-end' }}>
-                          <button className="btn-s btn-sm" onClick={() => setPolicyModal({ open: true, lead: r.lead, policy: r.policy })}>Edit</button>
-                          <button className="btn-s btn-sm btn-danger" onClick={() => { if (confirm(`Delete policy ${r.policy.policyNumber}?`)) deletePolicy(r.lead.id, r.policy.id); }}>×</button>
+                          <button className="btn-s btn-sm" onClick={() => setPolicyModal({ open: true, lead: r.lead, policy: r.policy.id.startsWith('placeholder_') ? undefined : r.policy })}>Edit</button>
+                          <button className="btn-s btn-sm btn-danger" onClick={() => { if (r.policy.id.startsWith('placeholder_')) { alert('This is a placeholder. Move the lead out of Bound or fill in policy details first.'); return; }
+                          if (confirm(`Delete policy ${r.policy.policyNumber}?`)) deletePolicy(r.lead.id, r.policy.id); }}>×</button>
                         </div>
                       </td>
                     </tr>

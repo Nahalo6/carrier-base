@@ -86,7 +86,7 @@ export default function PipelinePage() {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
                             <div style={{ fontWeight: 700, fontSize: 13, color: '#1b2a4a', lineHeight: 1.3 }}>{l.company}</div>
                             {uCount > 0 && (
-                              <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 100, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', whiteSpace: 'nowrap' }}>📬 {uCount}</span>
+                              <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 100, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', whiteSpace: 'nowrap' }}>{uCount} new</span>
                             )}
                           </div>
                           <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8 }}>DOT# {l.dot}</div>
@@ -104,7 +104,7 @@ export default function PipelinePage() {
                           </div>
                           {uCount > 0 && (
                             <div style={{ marginTop: 6, fontSize: 10, color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '4px 8px' }}>
-                              📬 {uCount} new email{uCount > 1 ? 's' : ''}
+                              {uCount} new email{uCount > 1 ? 's' : ''}
                             </div>
                           )}
                         </div>
