@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     const encoded = encodeURIComponent(name.trim());
     const res = await fetch(
       `${BASE}/carriers/name/${encoded}?start=${start}&size=${size}&webKey=${KEY}`,
-      { headers: { Accept: 'application/json' }, next: { revalidate: 300 } }
+      { headers: { Accept: 'application/json' }, next: { revalidate: 600 } }
     );
     if (!res.ok) return NextResponse.json({ error: 'Search failed', status: res.status }, { status: res.status });
     const data = await res.json();
