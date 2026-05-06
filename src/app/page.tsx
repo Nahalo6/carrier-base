@@ -142,7 +142,8 @@ export default function HomePage() {
     return () => { document.body.style.overflow = ''; };
   }, [modal]);
 
-  const goToCheckout = (plan: string) => router.push(`/checkout?plan=${plan}`);
+  const goToCheckout = (plan: string) => router.push(`/checkout?items=${plan}`);
+  const addToCheckout = (...items: string[]) => router.push(`/checkout?items=${items.join(',')}`);
 
   return (
     <div className={s.page}>
@@ -471,6 +472,51 @@ export default function HomePage() {
               <button className={`${s.btn} ${s.btnLight} ${s.priceCta}`} onClick={() => setModal('contact')}>Contact Sales</button>
             </div>
 
+          </div>
+
+          {/* ── Add-Ons ── */}
+          <div style={{ marginTop: 56, paddingTop: 40, borderTop: '1px solid rgba(0,0,0,0.08)' }}>
+            <div style={{ textAlign: 'center', marginBottom: 28 }}>
+              <span className={s.mono}>— Add-Ons</span>
+              <h3 style={{ fontSize: 28, fontWeight: 700, margin: '8px 0 6px', color: '#1b2a4a' }}>Optional services</h3>
+              <p style={{ color: '#64748b', fontSize: 15 }}>Add to any plan. Buy individually or bundle at checkout.</p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, maxWidth: 900, margin: '0 auto' }}>
+              {/* Broker Directory */}
+              <div style={{ background: '#fff', border: '2px solid #fde68a', borderRadius: 16, padding: 24, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 12, right: 12, fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 100, background: '#fef3c7', color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>One-time</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Broker Directory</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#1b2a4a', marginBottom: 10 }}>Get hooked up with brokers</div>
+                <div style={{ fontSize: 36, fontWeight: 800, color: '#1b2a4a', marginBottom: 4 }}>
+                  $1,000<span style={{ fontSize: 14, fontWeight: 500, color: '#64748b', marginLeft: 6 }}>flat fee</span>
+                </div>
+                <ul className={s.priceFeatures} style={{ marginTop: 16 }}>
+                  <li><Check />Curated broker network access</li>
+                  <li><Check />Direct introductions made for you</li>
+                  <li><Check />Specialty markets — Lloyd&rsquo;s, MGAs, surplus lines</li>
+                  <li><Check />Lifetime directory access</li>
+                </ul>
+                <button className={`${s.btn} ${s.btnLight} ${s.priceCta}`} onClick={() => addToCheckout('broker-directory')}>Purchase</button>
+              </div>
+
+              {/* UW Consultation */}
+              <div style={{ background: '#fff', border: '2px solid #5eead4', borderRadius: 16, padding: 24, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 12, right: 12, fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 100, background: '#f0fdfa', color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Monthly</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>À la carte</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#1b2a4a', marginBottom: 10 }}>Continuous UW Consultation</div>
+                <div style={{ fontSize: 36, fontWeight: 800, color: '#1b2a4a', marginBottom: 4 }}>
+                  $300<span style={{ fontSize: 14, fontWeight: 500, color: '#64748b', marginLeft: 6 }}>/mo</span>
+                </div>
+                <ul className={s.priceFeatures} style={{ marginTop: 16 }}>
+                  <li><Check />Senior underwriter on call</li>
+                  <li><Check />Account-level appetite reviews</li>
+                  <li><Check />Pre-quote opinions on tough risks</li>
+                  <li><Check />Cancel anytime</li>
+                </ul>
+                <button className={`${s.btn} ${s.btnLight} ${s.priceCta}`} onClick={() => addToCheckout('uw-consultation')}>Add Subscription</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>

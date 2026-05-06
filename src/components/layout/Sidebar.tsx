@@ -43,11 +43,9 @@ export default function Sidebar() {
   const leads = useCRMStore(s => s.leads);
   const boundCount = leads.filter(l => l.status === 'Bound').length;
   const currentUser = useAuthStore(s => s.currentUser);
-  const signOut = useAuthStore(s => s.signOut);
 
   const handleSignOut = () => {
-    signOut();
-    router.push('/login');
+    router.push('/signout');
   };
 
   const roleColor = currentUser?.role === 'admin' ? '#9f1239'
