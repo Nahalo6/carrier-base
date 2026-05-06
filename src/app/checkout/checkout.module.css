@@ -1,0 +1,313 @@
+.page {
+  --navy: #1b2a4a;
+  --navy-dark: #0f1a33;
+  --blue: #2563eb;
+  --blue-light: #3b82f6;
+  --blue-pale: #eff6ff;
+  --white: #ffffff;
+  --off-white: #f8fafc;
+  --cream: #f1f5f9;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --green: #16a34a;
+  --serif: 'Instrument Serif', Georgia, serif;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  font-family: var(--sans);
+  background: var(--off-white);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+.page * { box-sizing: border-box; margin: 0; padding: 0; }
+.page a { color: inherit; text-decoration: none; }
+.mono { font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 500; }
+
+/* LAYOUT */
+.wrap { display: grid; grid-template-columns: 1.2fr 1fr; min-height: 100vh; }
+.formSide { background: var(--white); padding: 60px; overflow-y: auto; }
+.summarySide {
+  background: var(--navy);
+  color: var(--white);
+  padding: 60px;
+  position: relative;
+  overflow: hidden;
+}
+.summaryGlow {
+  position: absolute;
+  top: -30%;
+  right: -30%;
+  width: 80%;
+  height: 160%;
+  background: radial-gradient(ellipse at center, rgba(59,130,246,0.2) 0%, transparent 60%);
+  pointer-events: none;
+}
+.summaryInner { position: relative; max-width: 440px; }
+
+/* FORM HEADER */
+.cfHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 48px; }
+.cfLogo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 24px;
+  color: var(--navy);
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+.cfBack { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; transition: color 0.2s; }
+.cfBack:hover { color: var(--ink); }
+.cfTitle { font-family: var(--serif); font-size: 44px; letter-spacing: -0.025em; color: var(--ink); margin-bottom: 8px; font-weight: 400; }
+.cfTitle em { font-style: italic; color: var(--blue); }
+.cfSub { font-size: 15px; color: var(--muted); margin-bottom: 40px; }
+
+/* SECTIONS */
+.cfSection { margin-bottom: 36px; }
+.cfSectionHdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cfStepNum {
+  width: 24px;
+  height: 24px;
+  background: var(--blue);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.cfSectionHdr h3 { font-family: var(--serif); font-size: 20px; color: var(--ink); letter-spacing: -0.01em; font-weight: 400; }
+
+/* FORM FIELDS */
+.cfRow { margin-bottom: 14px; }
+.cfGrid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cfGrid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+.cfRow label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+.cfRow input, .cfRow select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: var(--sans);
+  background: var(--white);
+  outline: none;
+  transition: all 0.2s;
+  color: var(--ink);
+}
+.cfRow input:focus, .cfRow select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+.hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.cardRow { position: relative; }
+.cardIcons { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); display: flex; gap: 6px; }
+.cardIcons svg { width: 32px; height: 20px; }
+
+/* TRUST BAR */
+.cfTrust {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 20px;
+  background: var(--blue-pale);
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  margin-bottom: 32px;
+}
+.cfTrust svg { color: var(--blue); flex-shrink: 0; }
+.cfTrustText { font-size: 12px; color: var(--navy); line-height: 1.5; }
+.cfTrustText strong { font-weight: 600; }
+
+/* PLAN SWITCHER */
+.planSwitch {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 32px;
+  background: var(--cream);
+  padding: 4px;
+  border-radius: 100px;
+}
+.planSwitchBtn {
+  flex: 1;
+  padding: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 100px;
+  color: var(--muted);
+  transition: all 0.2s;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--sans);
+}
+.planSwitchBtn.active {
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(15,23,42,0.08);
+}
+
+/* SUBMIT */
+.cfSubmit {
+  width: 100%;
+  background: var(--navy);
+  color: #fff;
+  padding: 18px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 20px;
+  transition: all 0.25s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--sans);
+}
+.cfSubmit:hover { background: var(--blue); }
+.cfSubmit:disabled { background: var(--muted); cursor: wait; }
+.cfLegal { font-size: 11px; color: var(--muted); text-align: center; margin-top: 16px; line-height: 1.6; }
+.cfLegal a { color: var(--blue); text-decoration: underline; }
+
+/* SUMMARY SIDE */
+.csEyebrow { font-family: var(--mono); font-size: 11px; color: var(--blue-light); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+.csTitle { font-family: var(--serif); font-size: 44px; letter-spacing: -0.025em; margin-bottom: 8px; font-weight: 400; line-height: 1; color: var(--white); }
+.csSub { font-size: 14px; color: rgba(255,255,255,0.6); margin-bottom: 40px; }
+.csPlanCard {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 28px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+}
+.csPlanName { font-family: var(--serif); font-size: 28px; letter-spacing: -0.01em; margin-bottom: 4px; font-weight: 400; color: var(--white); }
+.csPlanDesc { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 20px; }
+.csPlanPrice { font-family: var(--serif); font-size: 56px; letter-spacing: -0.03em; font-weight: 400; line-height: 0.9; margin-bottom: 24px; color: var(--white); }
+.csPlanPrice .cur { font-size: 24px; vertical-align: super; opacity: 0.5; }
+.csPlanPrice .per { font-size: 14px; opacity: 0.5; font-family: var(--sans); margin-left: 4px; }
+.csFeatures { list-style: none; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; padding-left: 0; }
+.csFeatures li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; margin-bottom: 10px; color: rgba(255,255,255,0.75); }
+.csFeatures svg { flex-shrink: 0; color: var(--blue-light); margin-top: 2px; }
+
+/* TOTALS */
+.csTotals {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.csTotalRow { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 13px; color: rgba(255,255,255,0.7); }
+.csTotalGrand {
+  padding-top: 14px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  font-size: 15px;
+  color: #fff;
+  font-weight: 500;
+}
+.csTotalGrand .amount { font-family: var(--serif); font-size: 28px; letter-spacing: -0.01em; font-weight: 400; }
+
+/* SECURE LOGOS */
+.csSecureLogos { margin-top: 40px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; opacity: 0.5; }
+.csSecureLogos div {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 0.04em;
+  padding: 6px 12px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 100px;
+}
+
+/* SUCCESS OVERLAY */
+.successOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,26,51,0.96);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.successBox {
+  background: #fff;
+  border-radius: 24px;
+  padding: 60px 48px;
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+}
+.successIconWrap {
+  width: 80px;
+  height: 80px;
+  background: #dcfce7;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 28px;
+}
+.successBox h2 { font-family: var(--serif); font-size: 40px; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 12px; font-weight: 400; }
+.successBox p { font-size: 15px; color: var(--muted); margin-bottom: 28px; line-height: 1.6; }
+.creds {
+  background: var(--off-white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 28px;
+  text-align: left;
+}
+.credsLabel { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
+.credsValue { font-family: var(--mono); font-size: 13px; color: var(--ink); font-weight: 500; }
+.successBtn {
+  width: 100%;
+  background: var(--navy);
+  color: #fff;
+  padding: 18px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--sans);
+  transition: all 0.25s;
+}
+.successBtn:hover { background: var(--blue); }
+
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: 1fr; }
+  .formSide, .summarySide { padding: 40px 24px; }
+  .csPlanCard { padding: 22px; }
+  .cfGrid2 { grid-template-columns: 1fr; }
+  .cfGrid3 { grid-template-columns: 1fr; }
+}
