@@ -24,6 +24,12 @@ function CheckoutInner() {
   // Payment form
   const [email, setEmail] = useState('');
   const [card, setCard] = useState({ number: '', exp: '', cvc: '', name: '' });
+  const [billing, setBilling] = useState({ street: '', city: '', state: '', zip: '', country: 'US' });
+  const [promo, setPromo] = useState('');
+  const [promoApplied, setPromoApplied] = useState<{ code: string; pct: number } | null>(null);
+  const [promoMsg, setPromoMsg] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [saveCard, setSaveCard] = useState(true);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [confirmation, setConfirmation] = useState<string>('');
 
@@ -126,6 +132,48 @@ function CheckoutInner() {
     return d.length >= 3 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
   };
 
+  // Card brand detection
+  const detectBrand = (num: string): 'visa' | 'mastercard' | 'amex' | 'discover' | 'unknown' => {
+    const n = num.replace(/\D/g, '');
+    if (/^4/.test(n)) return 'visa';
+    if (/^(5[1-5]|2[2-7])/.test(n)) return 'mastercard';
+    if (/^3[47]/.test(n)) return 'amex';
+    if (/^6(?:011|5)/.test(n)) return 'discover';
+    return 'unknown';
+  };
+  const cardBrand = detectBrand(card.number);
+  const cardLast4 = card.number.replace(/\D/g, '').slice(-4);
+
+  // Validation helpers
+  const isCardValid = card.number.replace(/\D/g, '').length >= 13 && card.exp.length === 5 && card.cvc.length >= 3;
+  const isBillingValid = billing.street.trim() && billing.city.trim() && billing.state.trim() && billing.zip.trim();
+
+  // Promo codes (mock — replace with real lookup)
+  const PROMO_CODES: Record<string, number> = { LAUNCH20: 20, BROKER10: 10, FRIEND15: 15 };
+  const applyPromo = () => {
+    const code = promo.trim().toUpperCase();
+    if (!code) { setPromoMsg(null); return; }
+    if (PROMO_CODES[code]) {
+      setPromoApplied({ code, pct: PROMO_CODES[code] });
+      setPromoMsg(`✓ ${PROMO_CODES[code]}% off applied`);
+    } else {
+      setPromoApplied(null);
+      setPromoMsg('Invalid promo code');
+    }
+  };
+
+  // Apply discount to totals
+  const discountedTotals = useMemo(() => {
+    if (!promoApplied) return totals;
+    const factor = (100 - promoApplied.pct) / 100;
+    return {
+      oneTimeTotal: Math.round(totals.oneTimeTotal * factor),
+      monthlyTotal: Math.round(totals.monthlyTotal * factor),
+      totalDueToday: Math.round(totals.totalDueToday * factor),
+    };
+  }, [totals, promoApplied]);
+  const savings = totals.totalDueToday - discountedTotals.totalDueToday;
+
   return (
     <div className={s.page}>
       <div className={s.wrap}>
@@ -184,49 +232,233 @@ function CheckoutInner() {
 
         {/* ── Step 2: Payment ── */}
         {step === 'payment' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'start' }}>
-            <form onSubmit={submitPayment}>
-              <h1 style={{ fontSize: 24, fontWeight: 700, color: '#1b2a4a', marginBottom: 6 }}>Payment</h1>
-              <p style={{ color: '#64748b', marginBottom: 20, fontSize: 13 }}>Secure payment processed by Stripe. Your card is never stored on our servers.</p>
+          <div style={{ maxWidth: 760, margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <h1 style={{ fontSize: 30, fontWeight: 800, color: '#1b2a4a', marginBottom: 6 }}>Complete your purchase</h1>
+              <p style={{ color: '#64748b', fontSize: 14 }}>Review your order below, then enter payment details. You can create your account next.</p>
+            </div>
 
-              <label className="lbl">Email *</label>
-              <input className="inp" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@agency.com" />
-
-              <div style={{ marginTop: 16 }}>
-                <label className="lbl">Cardholder Name</label>
-                <input className="inp" value={card.name} onChange={e => setCard({ ...card, name: e.target.value })} placeholder="Full name on card" />
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <label className="lbl">Card Number</label>
-                <input className="inp" value={card.number} onChange={e => setCard({ ...card, number: formatCard(e.target.value) })} placeholder="4242 4242 4242 4242" required />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+            {/* ── Compact order summary ── */}
+            <div style={{ background: 'linear-gradient(135deg, #1b2a4a 0%, #0f1a33 100%)', color: '#fff', borderRadius: 14, padding: 22, marginBottom: 22, boxShadow: '0 8px 24px -8px rgba(15,23,42,0.3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
                 <div>
-                  <label className="lbl">Expiry</label>
-                  <input className="inp" value={card.exp} onChange={e => setCard({ ...card, exp: formatExp(e.target.value) })} placeholder="MM/YY" required />
+                  <div style={{ fontSize: 11, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Order Summary</div>
+                  <div style={{ fontSize: 13, opacity: 0.85, marginTop: 3 }}>{cartItems.length} item{cartItems.length !== 1 ? 's' : ''}</div>
                 </div>
-                <div>
-                  <label className="lbl">CVC</label>
-                  <input className="inp" value={card.cvc} onChange={e => setCard({ ...card, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="123" required />
-                </div>
-              </div>
-
-              {error && <div style={{ background: '#fff1f2', border: '1px solid #fda4af', color: '#9f1239', padding: '10px 12px', borderRadius: 8, fontSize: 12, marginTop: 14 }}>{error}</div>}
-
-              <div className="flex" style={{ gap: 10, marginTop: 22 }}>
-                <button type="button" className="btn-s" onClick={() => setStep('cart')}>← Back</button>
-                <button type="submit" className="btn-p" disabled={paymentLoading} style={{ flex: 1 }}>
-                  {paymentLoading ? 'Processing…' : `Pay $${totals.totalDueToday.toLocaleString()}`}
+                <button type="button" onClick={() => setStep('cart')} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                  Edit cart
                 </button>
               </div>
 
-              <div style={{ marginTop: 14, fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                Secured with 256-bit TLS · Stripe-powered
+              {/* Items */}
+              <div style={{ marginBottom: 14 }}>
+                {cartItems.map(item => (
+                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: 13 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 600 }}>{item.name}</span>
+                      <span style={{ opacity: 0.6, fontSize: 11, marginLeft: 8 }}>{item.billing === 'monthly' ? 'monthly' : 'one-time'}</span>
+                    </div>
+                    <span style={{ fontWeight: 700 }}>${item.price.toLocaleString()}</span>
+                  </div>
+                ))}
               </div>
-            </form>
 
-            <CartSummary cartItems={cartItems} totals={totals} readonly />
+              {/* Totals */}
+              <div style={{ paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                {totals.oneTimeTotal > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', opacity: 0.85 }}>
+                    <span>One-time fees</span><span>${totals.oneTimeTotal.toLocaleString()}</span>
+                  </div>
+                )}
+                {totals.monthlyTotal > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', opacity: 0.85 }}>
+                    <span>Subscription (first month)</span><span>${totals.monthlyTotal.toLocaleString()}</span>
+                  </div>
+                )}
+                {promoApplied && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: '#5eead4', fontWeight: 600 }}>
+                    <span>Promo: {promoApplied.code} ({promoApplied.pct}% off)</span><span>−${savings.toLocaleString()}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 22, fontWeight: 800, padding: '10px 0 0', marginTop: 6, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                  <span>Due today</span><span>${discountedTotals.totalDueToday.toLocaleString()}</span>
+                </div>
+                {discountedTotals.monthlyTotal > 0 && (
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
+                    Then ${discountedTotals.monthlyTotal.toLocaleString()}/month, recurring. Cancel anytime.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── Payment form ── */}
+            <form onSubmit={submitPayment} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 28, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+
+              {/* Email */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>Contact</div>
+                <label className="lbl">Email address *</label>
+                <input className="inp" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@agency.com" />
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>We&rsquo;ll send your receipt and confirmation here.</div>
+              </div>
+
+              {/* Card preview */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>Payment Method</div>
+
+                <CardPreview number={card.number} name={card.name} exp={card.exp} brand={cardBrand} />
+
+                <div style={{ marginTop: 14 }}>
+                  <label className="lbl">Card Number *</label>
+                  <div style={{ position: 'relative' }}>
+                    <input className="inp" value={card.number}
+                      onChange={e => setCard({ ...card, number: formatCard(e.target.value) })}
+                      placeholder="1234 5678 9012 3456" required
+                      style={{ paddingRight: 60, fontFamily: 'monospace', letterSpacing: '0.05em' }} />
+                    {cardBrand !== 'unknown' && (
+                      <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 4, background: brandColors[cardBrand].bg, color: brandColors[cardBrand].color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {cardBrand}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <label className="lbl">Cardholder Name *</label>
+                  <input className="inp" value={card.name} onChange={e => setCard({ ...card, name: e.target.value })} placeholder="Name as shown on card" required />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                  <div>
+                    <label className="lbl">Expiry *</label>
+                    <input className="inp" value={card.exp} onChange={e => setCard({ ...card, exp: formatExp(e.target.value) })} placeholder="MM/YY" required maxLength={5} />
+                  </div>
+                  <div>
+                    <label className="lbl">CVC *</label>
+                    <div style={{ position: 'relative' }}>
+                      <input className="inp" value={card.cvc} onChange={e => setCard({ ...card, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="123" required maxLength={4} style={{ paddingRight: 32 }} />
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)' }}>
+                        <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save card option */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={saveCard} onChange={e => setSaveCard(e.target.checked)} style={{ accentColor: '#2563eb', width: 14, height: 14 }} />
+                  Save this card for future renewals (you can remove it anytime)
+                </label>
+              </div>
+
+              {/* Billing address */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>Billing Address</div>
+                <div style={{ marginBottom: 12 }}>
+                  <label className="lbl">Street Address *</label>
+                  <input className="inp" value={billing.street} onChange={e => setBilling({ ...billing, street: e.target.value })} placeholder="123 Main St" required />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label className="lbl">City *</label>
+                    <input className="inp" value={billing.city} onChange={e => setBilling({ ...billing, city: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="lbl">State *</label>
+                    <input className="inp" value={billing.state} onChange={e => setBilling({ ...billing, state: e.target.value.toUpperCase().slice(0, 2) })} placeholder="TX" required maxLength={2} />
+                  </div>
+                  <div>
+                    <label className="lbl">ZIP *</label>
+                    <input className="inp" value={billing.zip} onChange={e => setBilling({ ...billing, zip: e.target.value })} placeholder="75001" required />
+                  </div>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <label className="lbl">Country</label>
+                  <select className="sel" style={{ width: '100%' }} value={billing.country} onChange={e => setBilling({ ...billing, country: e.target.value })}>
+                    <option value="US">United States</option>
+                    <option value="CA">Canada</option>
+                    <option value="MX">Mexico</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Promo code */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>Promo Code</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="inp" value={promo} onChange={e => setPromo(e.target.value)} placeholder="Enter code (optional)" style={{ flex: 1, textTransform: 'uppercase' }} />
+                  <button type="button" onClick={applyPromo} className="btn-s" style={{ minWidth: 80 }}>Apply</button>
+                </div>
+                {promoMsg && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: promoApplied ? '#0f766e' : '#9f1239', fontWeight: 600 }}>
+                    {promoMsg}
+                  </div>
+                )}
+              </div>
+
+              {/* Trust signals */}
+              <div style={{ marginBottom: 20, padding: 14, background: '#f8fafc', borderRadius: 10, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                <TrustItem
+                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>}
+                  title="256-bit TLS"
+                  desc="Bank-level encryption"
+                />
+                <TrustItem
+                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7L9 18l-5-5" /></svg>}
+                  title="Stripe-powered"
+                  desc="PCI DSS Level 1"
+                />
+                <TrustItem
+                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9" /><polyline points="3 4 3 10 9 10" /></svg>}
+                  title="Cancel anytime"
+                  desc="No long contracts"
+                />
+              </div>
+
+              {/* Terms checkbox */}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 16, fontSize: 12, color: '#475569', cursor: 'pointer', lineHeight: 1.5 }}>
+                <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} style={{ accentColor: '#2563eb', width: 14, height: 14, flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  I authorize Carrier Base to charge my card <b>${discountedTotals.totalDueToday.toLocaleString()} today</b>
+                  {discountedTotals.monthlyTotal > 0 && <> and <b>${discountedTotals.monthlyTotal.toLocaleString()}/month</b> on the same day each month until cancelled</>}
+                  . I agree to the <a href="#" onClick={e => e.preventDefault()} style={{ color: '#2563eb', textDecoration: 'none' }}>Terms of Service</a> and <a href="#" onClick={e => e.preventDefault()} style={{ color: '#2563eb', textDecoration: 'none' }}>Privacy Policy</a>.
+                </span>
+              </label>
+
+              {error && <div style={{ background: '#fff1f2', border: '1px solid #fda4af', color: '#9f1239', padding: '10px 12px', borderRadius: 8, fontSize: 12, marginBottom: 14 }}>{error}</div>}
+
+              <div className="flex" style={{ gap: 10 }}>
+                <button type="button" className="btn-s" onClick={() => setStep('cart')} style={{ minWidth: 110 }}>← Back to cart</button>
+                <button type="submit" className="btn-p"
+                  disabled={paymentLoading || !isCardValid || !isBillingValid || !acceptedTerms}
+                  style={{ flex: 1, fontSize: 15, fontWeight: 700, padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  {paymentLoading ? (
+                    <>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ animation: 'spin 0.8s linear infinite' }}>
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      </svg>
+                      Processing payment…
+                    </>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                      Pay ${discountedTotals.totalDueToday.toLocaleString()}
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Money-back / disclaimer */}
+              <div style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid #f1f5f9', textAlign: 'center', fontSize: 11, color: '#64748b', lineHeight: 1.6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 6, color: '#0f766e', fontWeight: 600 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="10" /></svg>
+                  30-day money-back guarantee
+                </div>
+                Questions? Contact <a href="mailto:billing@carrierbase.app" style={{ color: '#2563eb' }}>billing@carrierbase.app</a> or call (888) 555-0100
+              </div>
+
+            </form>
+            <style jsx>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
           </div>
         )}
 
@@ -287,6 +519,68 @@ function CheckoutInner() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Card brand colors used by the payment screen ────────────────────────────
+const brandColors: Record<'visa' | 'mastercard' | 'amex' | 'discover', { bg: string; color: string }> = {
+  visa:       { bg: '#1a1f71', color: '#fff' },
+  mastercard: { bg: '#eb001b', color: '#fff' },
+  amex:       { bg: '#006fcf', color: '#fff' },
+  discover:   { bg: '#ff6000', color: '#fff' },
+};
+
+// Live card preview that mirrors the entered details
+function CardPreview({ number, name, exp, brand }: { number: string; name: string; exp: string; brand: string }) {
+  const display = number || '•••• •••• •••• ••••';
+  const padded = display.length < 19 ? display + '•••• •••• •••• ••••'.slice(display.length) : display;
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #1b2a4a 0%, #2563eb 60%, #3b82f6 100%)',
+      color: '#fff', padding: '20px 22px', borderRadius: 12,
+      boxShadow: '0 8px 24px -8px rgba(15,23,42,0.3)',
+      position: 'relative', overflow: 'hidden', minHeight: 160,
+    }}>
+      {/* Subtle pattern */}
+      <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: -30, right: 80, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, position: 'relative', zIndex: 1 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Carrier Base</div>
+          <div style={{ fontSize: 9, opacity: 0.6, marginTop: 2 }}>Secure Payment</div>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 4, background: brand !== 'unknown' ? brandColors[brand as keyof typeof brandColors]?.bg || 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.15)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {brand !== 'unknown' ? brand : 'Card'}
+        </div>
+      </div>
+
+      <div style={{ fontFamily: 'monospace', fontSize: 19, letterSpacing: '0.12em', marginBottom: 16, position: 'relative', zIndex: 1 }}>
+        {padded}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', position: 'relative', zIndex: 1 }}>
+        <div>
+          <div style={{ fontSize: 9, opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Cardholder</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{name || 'Your Name'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Expires</div>
+          <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'monospace' }}>{exp || 'MM/YY'}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrustItem({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 4 }}>
+      <div style={{ color: '#0f766e' }}>{icon}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#1b2a4a' }}>{title}</div>
+      <div style={{ fontSize: 10, color: '#64748b' }}>{desc}</div>
     </div>
   );
 }
