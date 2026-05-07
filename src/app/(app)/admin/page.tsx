@@ -267,6 +267,22 @@ function AdminContent() {
           </table>
         </div>
 
+        {/* Roadmap download */}
+        <div style={{ marginTop: 18, padding: 18, background: '#1b2a4a', borderRadius: 12, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Strategy</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginTop: 4 }}>Product Roadmap & Gap Analysis</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+              Branded PDF covering production readiness, must-haves, nice-to-haves, compliance, and 5-phase timeline.
+            </div>
+          </div>
+          <a href="/carrier-base-roadmap.pdf" download
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', background: '#fff', color: '#1b2a4a', borderRadius: 10, textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download PDF
+          </a>
+        </div>
+
         {/* Audit reminder */}
         <div style={{ marginTop: 18, padding: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 12, color: '#475569' }}>
           <div style={{ fontWeight: 700, color: '#1b2a4a', marginBottom: 4 }}>Role Permissions Reference</div>
