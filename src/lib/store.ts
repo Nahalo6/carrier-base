@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Lead, Market, Producer, Contact, Application, LeadStatus, Policy, Driver, Vehicle, MVROrder } from './types';
+import type { TruckingApplication } from './trucking-app';
 import {
   INITIAL_LEADS, INITIAL_MARKETS, INITIAL_PRODUCERS,
   INITIAL_APPLICATIONS, INITIAL_TEAM_GOAL,
@@ -72,6 +73,11 @@ interface CRMState {
   // MVR actions
   addMVROrder: (leadId: string, order: MVROrder) => void;
   updateMVROrder: (leadId: string, orderId: string, updates: Partial<MVROrder>) => void;
+
+  // Trucking application actions
+  truckingApps: TruckingApplication[];
+  saveTruckingApp: (app: TruckingApplication) => void;
+  deleteTruckingApp: (appId: string) => void;
 }
 
 export const useCRMStore = create<CRMState>()(
@@ -256,6 +262,21 @@ export const useCRMStore = create<CRMState>()(
           const mvrOrders = (l.mvrOrders || []).map(o => o.id === orderId ? { ...o, ...updates } : o);
           return { ...l, mvrOrders };
         }),
+      })),
+
+      // ── Trucking applications ──
+      truckingApps: [],
+      saveTruckingApp: (app) => set(s => {
+        const existing = s.truckingApps.find(a => a.id === app.id);
+        const next = { ...app, updatedAt: new Date().toISOString() };
+        return {
+          truckingApps: existing
+            ? s.truckingApps.map(a => a.id === app.id ? next : a)
+            : [next, ...s.truckingApps],
+        };
+      }),
+      deleteTruckingApp: (appId) => set(s => ({
+        truckingApps: s.truckingApps.filter(a => a.id !== appId),
       })),
     }),
     { name: 'carrier-base-crm' }
