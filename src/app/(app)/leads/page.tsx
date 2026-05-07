@@ -725,6 +725,31 @@ function DocumentsTab({ lead }: { lead: Lead }) {
     a.click();
   };
 
+  // Open the file in a new tab. Convert data URL to blob URL so browsers
+  // (especially Chrome) reliably display PDFs/images inline instead of blocking.
+  const openDoc = async (doc: typeof lead.docs[number]) => {
+    if (!doc.dataUrl) {
+      alert('This document has no file attached. Re-upload to enable preview.');
+      return;
+    }
+    try {
+      const res = await fetch(doc.dataUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const win = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      // Some browsers (Office docs, .eml) will trigger a download instead of inline preview
+      if (!win) {
+        // Popup blocked — fall back to download
+        downloadDoc(doc);
+      }
+      // Revoke after a minute so the new tab has time to load
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch {
+      // Fall back to direct data URL open
+      window.open(doc.dataUrl, '_blank');
+    }
+  };
+
   const docTypeIcon = (mime?: string, name?: string) => {
     const m = (mime || '').toLowerCase();
     const n = (name || '').toLowerCase();
@@ -829,7 +854,7 @@ function DocumentsTab({ lead }: { lead: Lead }) {
             <div key={tag} className="doc-folder">
               <div style={{ fontSize: 12, fontWeight: 700, color: '#1b2a4a', marginBottom: 8 }}>{tag} ({docs.length})</div>
               {docs.map(d => (
-                <DocItem key={d.id} doc={d} icon={docTypeIcon(d.mimeType, d.name)} onDownload={() => downloadDoc(d)} onDelete={() => { if (confirm(`Delete ${d.name}?`)) deleteDoc(lead.id, d.id); }} />
+                <DocItem key={d.id} doc={d} icon={docTypeIcon(d.mimeType, d.name)} onOpen={() => openDoc(d)} onDownload={() => downloadDoc(d)} onDelete={() => { if (confirm(`Delete ${d.name}?`)) deleteDoc(lead.id, d.id); }} />
               ))}
             </div>
           );
@@ -839,7 +864,7 @@ function DocumentsTab({ lead }: { lead: Lead }) {
           <div className="doc-folder">
             <div style={{ fontSize: 12, fontWeight: 700, color: '#1b2a4a', marginBottom: 8 }}>{filterTag} ({visibleDocs.length})</div>
             {visibleDocs.map(d => (
-              <DocItem key={d.id} doc={d} icon={docTypeIcon(d.mimeType, d.name)} onDownload={() => downloadDoc(d)} onDelete={() => { if (confirm(`Delete ${d.name}?`)) deleteDoc(lead.id, d.id); }} />
+              <DocItem key={d.id} doc={d} icon={docTypeIcon(d.mimeType, d.name)} onOpen={() => openDoc(d)} onDownload={() => downloadDoc(d)} onDelete={() => { if (confirm(`Delete ${d.name}?`)) deleteDoc(lead.id, d.id); }} />
             ))}
           </div>
         ) : (
@@ -850,27 +875,38 @@ function DocumentsTab({ lead }: { lead: Lead }) {
   );
 }
 
-function DocItem({ doc, icon, onDownload, onDelete }: {
+function DocItem({ doc, icon, onOpen, onDownload, onDelete }: {
   doc: { id: string; name: string; date: string; size: string; tag: string; dataUrl?: string };
   icon: string;
+  onOpen: () => void;
   onDownload: () => void;
   onDelete: () => void;
 }) {
+  const hasFile = !!doc.dataUrl;
   return (
-    <div className="doc-item">
+    <div
+      className="doc-item"
+      onDoubleClick={() => hasFile && onOpen()}
+      title={hasFile ? 'Double-click to open' : 'No file attached'}
+      style={{ cursor: hasFile ? 'pointer' : 'default', userSelect: 'none' }}
+    >
       <div className="flex" style={{ gap: 10, alignItems: 'center' }}>
         <div style={{ width: 36, height: 36, borderRadius: 6, background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, flexShrink: 0 }}>
           {icon}
         </div>
         <div>
           <div style={{ fontWeight: 600, fontSize: 13 }}>{doc.name}</div>
-          <div style={{ fontSize: 10, color: '#94a3b8' }}>{doc.date} · {doc.size}</div>
+          <div style={{ fontSize: 10, color: '#94a3b8' }}>
+            {doc.date} · {doc.size}
+            {hasFile && <span style={{ marginLeft: 6, color: '#2563eb' }}>· double-click to open</span>}
+          </div>
         </div>
       </div>
-      <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+      <div className="flex" style={{ gap: 6, alignItems: 'center' }} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
         <span className={`tag ${DOC_TAG_COLORS[doc.tag] || 'tag-slate'}`}>{doc.tag}</span>
-        {doc.dataUrl && <button className="btn-s btn-sm" onClick={onDownload}>Download</button>}
-        <button className="btn-s btn-sm btn-danger" onClick={onDelete}>×</button>
+        {hasFile && <button className="btn-s btn-sm" onClick={onOpen} title="Open in new tab">Open</button>}
+        {hasFile && <button className="btn-s btn-sm" onClick={onDownload} title="Download to device">Download</button>}
+        <button className="btn-s btn-sm btn-danger" onClick={onDelete} title="Delete document">×</button>
       </div>
     </div>
   );
