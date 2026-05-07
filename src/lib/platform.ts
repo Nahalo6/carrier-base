@@ -2,24 +2,27 @@
 // Platform store: notifications + wallet, both per-user.
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AppNotification, NotificationType, Wallet, WalletTransaction } from './types';
+import type { AppNotification, NotificationType, Wallet, WalletTransaction, WaitlistSignup } from './types';
 
 interface PlatformState {
   notifications: AppNotification[];
-  wallets: Record<string, Wallet>;          // keyed by userId
+  wallets: Record<string, Wallet>;
+  waitlist: WaitlistSignup[];
 
-  // ── Notifications ──
   pushNotification: (n: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => void;
   markRead: (id: string) => void;
   markAllRead: (userId: string) => void;
   clearAll: (userId: string) => void;
   deleteNotification: (id: string) => void;
 
-  // ── Wallet ──
   ensureWallet: (userId: string) => Wallet;
   topUp: (userId: string, amount: number, reference?: string) => Wallet;
   charge: (userId: string, amount: number, type: WalletTransaction['type'], description: string, reference?: string) => { ok: boolean; wallet: Wallet };
   setAutoRecharge: (userId: string, autoRecharge: boolean, threshold?: number, amount?: number) => void;
+
+  addWaitlistSignup: (s: Omit<WaitlistSignup, 'id' | 'date' | 'status'>) => { ok: boolean; error?: string };
+  updateWaitlistStatus: (id: string, status: WaitlistSignup['status']) => void;
+  deleteWaitlistSignup: (id: string) => void;
 }
 
 const newWallet = (userId: string): Wallet => ({
@@ -33,6 +36,7 @@ export const usePlatformStore = create<PlatformState>()(
     (set, get) => ({
       notifications: [],
       wallets: {},
+      waitlist: [],
 
       pushNotification: (n) => set(s => ({
         notifications: [
@@ -103,6 +107,29 @@ export const usePlatformStore = create<PlatformState>()(
           autoRechargeAmount: amount ?? cur.autoRechargeAmount };
         set(s => ({ wallets: { ...s.wallets, [userId]: next } }));
       },
+
+      addWaitlistSignup: (signup) => {
+        const email = signup.email.trim().toLowerCase();
+        if (!email) return { ok: false, error: 'Email is required.' };
+        if (get().waitlist.some(w => w.email === email)) {
+          return { ok: false, error: 'You\'re already on the waitlist — we\'ll be in touch.' };
+        }
+        const entry: WaitlistSignup = {
+          id: 'wl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          date: new Date().toISOString(),
+          ...signup,
+          email,
+          status: 'new',
+        };
+        set(s => ({ waitlist: [entry, ...s.waitlist] }));
+        return { ok: true };
+      },
+      updateWaitlistStatus: (id, status) => set(s => ({
+        waitlist: s.waitlist.map(w => w.id === id ? { ...w, status } : w),
+      })),
+      deleteWaitlistSignup: (id) => set(s => ({
+        waitlist: s.waitlist.filter(w => w.id !== id),
+      })),
     }),
     { name: 'carrier-base-platform' }
   )

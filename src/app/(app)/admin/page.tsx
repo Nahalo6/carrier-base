@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { useAuthStore, type AuthUser, type UserRole } from '@/lib/auth';
+import { usePlatformStore } from '@/lib/platform';
+import type { WaitlistSignup } from '@/lib/types';
 import AuthGuard from '@/components/AuthGuard';
 import Modal from '@/components/ui/Modal';
 
@@ -267,6 +269,9 @@ function AdminContent() {
           </table>
         </div>
 
+        {/* Waitlist signups */}
+        <WaitlistTable />
+
         {/* Roadmap download */}
         <div style={{ marginTop: 18, padding: 18, background: '#1b2a4a', borderRadius: 12, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
@@ -339,6 +344,144 @@ function AdminContent() {
         </Modal>
       )}
     </>
+  );
+}
+
+function WaitlistTable() {
+  const waitlist = usePlatformStore(s => s.waitlist);
+  const updateStatus = usePlatformStore(s => s.updateWaitlistStatus);
+  const deleteSignup = usePlatformStore(s => s.deleteWaitlistSignup);
+  const [filter, setFilter] = useState<WaitlistSignup['status'] | 'all'>('all');
+
+  const filtered = filter === 'all' ? waitlist : waitlist.filter(w => w.status === filter);
+
+  const exportCSV = () => {
+    const rows: string[][] = [
+      ['Date', 'Name', 'Email', 'Agency', 'Size', 'Role', 'Current Tool', 'Status', 'Notes', 'Source'],
+      ...waitlist.map(w => [
+        new Date(w.date).toLocaleDateString(),
+        w.name, w.email, w.agencyName, w.agencySize, w.role,
+        w.currentTool || '', w.status, w.notes || '', w.source || '',
+      ]),
+    ];
+    const csv = rows.map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `carrier-base-waitlist-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
+
+  const counts = {
+    all: waitlist.length,
+    new: waitlist.filter(w => w.status === 'new').length,
+    contacted: waitlist.filter(w => w.status === 'contacted').length,
+    beta: waitlist.filter(w => w.status === 'beta').length,
+    declined: waitlist.filter(w => w.status === 'declined').length,
+  };
+
+  const statusColors: Record<WaitlistSignup['status'], { bg: string; color: string }> = {
+    new: { bg: '#eff6ff', color: '#1e40af' },
+    contacted: { bg: '#fef3c7', color: '#92400e' },
+    beta: { bg: '#f0fdfa', color: '#0f766e' },
+    declined: { bg: '#fafafa', color: '#525252' },
+  };
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <div className="flex flex-between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Founding Agency Waitlist</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#1b2a4a', marginTop: 2 }}>
+            {waitlist.length} signup{waitlist.length !== 1 ? 's' : ''}
+            {counts.new > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: '#1e40af', marginLeft: 8 }}>· {counts.new} new</span>}
+          </div>
+        </div>
+        <div className="flex" style={{ gap: 6 }}>
+          <button className="btn-s btn-sm" onClick={exportCSV} disabled={waitlist.length === 0}>Export CSV</button>
+          <a href="/early-access" target="_blank" rel="noopener" className="btn-s btn-sm">View landing page</a>
+        </div>
+      </div>
+
+      {/* Status filter chips */}
+      <div className="flex" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+        {(['all', 'new', 'contacted', 'beta', 'declined'] as const).map(s => (
+          <button key={s} onClick={() => setFilter(s)}
+            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 100,
+              border: `1px solid ${filter === s ? '#1b2a4a' : '#cbd5e1'}`,
+              background: filter === s ? '#1b2a4a' : '#fff',
+              color: filter === s ? '#fff' : '#475569', cursor: 'pointer', textTransform: 'capitalize' }}>
+            {s} · {counts[s]}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+          {waitlist.length === 0
+            ? <>No waitlist signups yet. Share <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>carrier-base.vercel.app/early-access</code> to start collecting.</>
+            : 'No signups match this filter.'}
+        </div>
+      ) : (
+        <div style={{ overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead style={{ background: '#f8fafc' }}>
+              <tr>
+                <th style={{ padding: 10, textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Date</th>
+                <th style={{ padding: 10, textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Contact</th>
+                <th style={{ padding: 10, textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Agency</th>
+                <th style={{ padding: 10, textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Currently Using</th>
+                <th style={{ padding: 10, textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Status</th>
+                <th style={{ padding: 10, textAlign: 'right', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(w => {
+                const sc = statusColors[w.status];
+                return (
+                  <tr key={w.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: 10, color: '#64748b', fontSize: 12 }}>{new Date(w.date).toLocaleDateString()}</td>
+                    <td style={{ padding: 10 }}>
+                      <div style={{ fontWeight: 600, color: '#1b2a4a' }}>{w.name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}><a href={`mailto:${w.email}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{w.email}</a> · {w.role}</div>
+                    </td>
+                    <td style={{ padding: 10 }}>
+                      <div style={{ fontWeight: 600, color: '#1b2a4a' }}>{w.agencyName}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{w.agencySize === 'solo' ? 'Solo producer' : w.agencySize + ' producers'}</div>
+                    </td>
+                    <td style={{ padding: 10, fontSize: 12, color: '#475569' }}>{w.currentTool || '—'}</td>
+                    <td style={{ padding: 10 }}>
+                      <select value={w.status} onChange={e => updateStatus(w.id, e.target.value as WaitlistSignup['status'])}
+                        style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: `1px solid ${sc.color}40`, background: sc.bg, color: sc.color, cursor: 'pointer', textTransform: 'capitalize' }}>
+                        <option value="new">New</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="beta">In Beta</option>
+                        <option value="declined">Declined</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: 10, textAlign: 'right' }}>
+                      <button className="btn-s btn-sm btn-danger" onClick={() => { if (confirm(`Delete signup from ${w.name}?`)) deleteSignup(w.id); }}>×</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {filtered.length > 0 && filtered.some(w => w.notes) && (
+        <div style={{ marginTop: 12, padding: 12, background: '#f8fafc', borderRadius: 8, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, color: '#1b2a4a', marginBottom: 6 }}>Pain points captured ({filtered.filter(w => w.notes).length})</div>
+          {filtered.filter(w => w.notes).map(w => (
+            <div key={w.id} style={{ padding: '6px 0', borderTop: '1px solid #e2e8f0', color: '#475569' }}>
+              <span style={{ fontWeight: 600, color: '#1b2a4a' }}>{w.agencyName}:</span> &ldquo;{w.notes}&rdquo;
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

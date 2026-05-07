@@ -249,6 +249,20 @@ export interface Application {
   data: Record<string, string>;
 }
 
+export interface WaitlistSignup {
+  id: string;
+  date: string;
+  name: string;
+  email: string;
+  agencyName: string;
+  agencySize: string;             // 'solo' | '2-5' | '6-15' | '15+'
+  role: string;
+  currentTool?: string;
+  notes?: string;
+  source?: string;                // utm_source or "direct"
+  status: 'new' | 'contacted' | 'beta' | 'declined';
+}
+
 export type NotificationType = 'email_reply' | 'renewal_due' | 'mvr_complete' | 'lead_assigned' | 'policy_bound' | 'wallet_low' | 'system';
 
 export interface AppNotification {

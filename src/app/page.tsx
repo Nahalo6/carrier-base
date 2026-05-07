@@ -163,8 +163,8 @@ export default function HomePage() {
           </div>
           <div className={s.navCta}>
             <Link href="/login" className={`${s.btn} ${s.btnGhost}`}>Sign In</Link>
-            <Link href="/signup" className={`${s.btn} ${s.btnPrimary}`}>
-              Sign Up <ArrowRight />
+            <Link href="/early-access" className={`${s.btn} ${s.btnPrimary}`}>
+              Early Access <ArrowRight />
             </Link>
           </div>
         </div>
@@ -182,9 +182,9 @@ export default function HomePage() {
           <h1 className={s.heroH1}>The operating system for <em>trucking insurance</em> agencies.</h1>
           <p className={s.heroLede}>A CRM, pre-underwriting engine, trucking application generator, MVR platform, and email system. Built specifically for commercial trucking insurance.</p>
           <div className={s.heroCtas}>
-            <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => setModal('demo')}>
-              Book a Demo <ArrowRight />
-            </button>
+            <Link href="/early-access" className={`${s.btn} ${s.btnPrimary}`}>
+              Join Founding Agencies <ArrowRight />
+            </Link>
             <a href="#features" className={`${s.btn} ${s.btnLight}`}>See Features</a>
           </div>
           <div className={s.heroStats}>
