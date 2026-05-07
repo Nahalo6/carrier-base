@@ -33,7 +33,9 @@ const MARGIN = 54;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
 const doc = new PDFDocument({
-  size: 'LETTER',
+  size: [PAGE_W, PAGE_H],
+  layout: 'portrait',
+  autoFirstPage: true,
   margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
   info: {
     Title: 'Carrier Base - Product Roadmap and Gap Analysis',
@@ -72,7 +74,7 @@ function drawChrome() {
 }
 
 function newPage() {
-  doc.addPage();
+  doc.addPage({ size: [PAGE_W, PAGE_H], layout: 'portrait', margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN } });
   pageNum += 1;
   drawChrome();
 }

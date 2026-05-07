@@ -276,7 +276,7 @@ function AdminContent() {
               Branded PDF covering production readiness, must-haves, nice-to-haves, compliance, and 5-phase timeline.
             </div>
           </div>
-          <a href="/carrier-base-roadmap.pdf" download
+          <a href="/carrier-base-roadmap.pdf?v=2" download="Carrier-Base-Roadmap.pdf"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', background: '#fff', color: '#1b2a4a', borderRadius: 10, textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download PDF
